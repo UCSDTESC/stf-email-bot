@@ -1,0 +1,13 @@
+{
+  "name": "stf-email-bot",
+  "private": true,
+  "type": "module",
+  "description": "AI email bot that answers TESC Student Travel Fund questions (Google Apps Script).",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test tests/",
+    "build:faq": "node scripts/build-faq-seed.mjs",
+    "eval": "node scripts/eval.mjs",
+    "push": "npm run build:faq && clasp push"
+  }
+}
