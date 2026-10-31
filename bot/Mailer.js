@@ -10,7 +10,8 @@
 const SIGNATURE = [
   '',
   'Best,',
-  'TESC Student Travel Fund Assistant',
+  'TESC Student Travel Fund Team',
+  'Triton Engineering Student Council',
   '',
   '--',
   "This answer was written by TESC's automated assistant using our Student Travel Fund FAQ (https://tescatucsd.org/funding).",
