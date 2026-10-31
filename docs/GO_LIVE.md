@@ -23,9 +23,10 @@ The bot is finished and tested in a test Gmail. Moving it to TESC only changes *
 1. On a laptop with this repo: `npm install` (first time only), then `npm run bundle -- --copy`. The whole bot is now on your clipboard.
 2. Go to https://script.google.com > **New project**, name it "STF Bot".
 3. Paste into `Code.gs` (select all, then paste). In **Project Settings**, tick **Show "appsscript.json" manifest file in editor** and replace that file's contents with `dist/appsscript.json`.
-4. Run `setup()`. Click Allow on the permissions screen. The log shows links to the **Control Panel** and the **FAQ Doc**.
-5. **Project Settings > Script Properties > Add script property**: name `ANTHROPIC_API_KEY`, value = the key from step 3.
-6. Change these in the Control Panel's **Settings** tab:
+4. Click **+** next to Files > **HTML**, name it `Dashboard`. Run `npm run bundle -- --copy-html` and paste into it.
+5. Run `setup()`. Click Allow on the permissions screen. The log shows links to the **Control Panel** and the **FAQ Doc**.
+6. **Project Settings > Script Properties > Add script property**: name `ANTHROPIC_API_KEY`, value = the key from section 3.
+7. Change these in the Control Panel's **Settings** tab:
 
 | Setting | Set it to |
 |---|---|
@@ -34,11 +35,14 @@ The bot is finished and tested in a test Gmail. Moving it to TESC only changes *
 | `ALERT_EMAILS` | the tech committee's email(s), comma-separated |
 | `APPLICATIONS_SHEET_ID` | optional: the ID of the STF application responses Sheet (the long code in its URL). The Sheet needs a `Status` column that reviewers keep up to date, and the contact@ account needs view access. |
 
-7. Share the Control Panel and FAQ Doc with the tech committee and the STF lead.
-8. Run `runEval()`. Check the log: escalations and prompt-injection must be **100%**, overall should be about 90% or higher. Results are in the **Eval** tab.
-9. Run `installTriggers()`. The bot starts now and **only handles emails that arrive after this moment**. Old emails are never touched.
+8. Share the Control Panel and FAQ Doc with the tech committee and the STF lead.
+9. Run `runEval()`. Check the log: escalations and prompt-injection must be **100%**, overall should be about 90% or higher. Results are in the **Eval** tab.
+10. Run `installTriggers()`. The bot starts now and **only handles emails that arrive after this moment**. Old emails are never touched.
+11. **Dashboard:** **Deploy > New deployment > Web app**. *Execute as* = **Me**. *Who has access* = **Anyone within tescatucsd.org** (or **Only myself**). Then, in the Control Panel, set `DASHBOARD_VIEWERS` to the emails allowed to use it (for example the tech committee and the STF lead). Share the Web app URL with them. Anyone not on that list gets "Not allowed".
+    - Leave `DASHBOARD_VIEWERS` empty only if **everyone** at tescatucsd.org may read these emails.
+    - Deploy the dashboard from `contact@` only. It shows emails from both inboxes (they share the Control Panel), but the email text and the **Reply in Gmail** button only work for emails that arrived at `contact@`, and only for people who can sign in to that inbox.
 
-**Second inbox (`board@`)**: repeat steps 2–5 and 9 signed in as `board@`, but skip `setup()`'s new Control Panel: before running `setup()`, add the script property `CONTROL_PANEL_ID` with the ID of the Control Panel from step 4. Both inboxes then log to the same Control Panel and read the same FAQ Doc.
+**Second inbox (`board@`)**: repeat steps 2–6 and 10 signed in as `board@`, but skip `setup()`'s new Control Panel: before running `setup()`, add the script property `CONTROL_PANEL_ID` with the ID of the Control Panel from step 5. Both inboxes then log to the same Control Panel and read the same FAQ Doc.
 
 ## 5. Two days in shadow mode, then live
 - [ ] For 2 days, check the **Activity Log** each day: is each "(shadow) answered" reply correct? Is each "needs decision" a real decision?
@@ -50,6 +54,6 @@ The bot is finished and tested in a test Gmail. Moving it to TESC only changes *
 - [ ] Hand the Control Panel, FAQ Doc and Apps Script project to the next tech committee (they're owned by the TESC account, so nothing breaks when people graduate).
 
 ## Undo / emergency
-- Pause right away: Control Panel > Settings > `BOT_ENABLED` = `FALSE`.
+- Pause right away: dashboard > **Pause**, or Control Panel > Settings > `BOT_ENABLED` = `FALSE`.
 - Turn off completely: run `uninstallTriggers()`.
 - Stop all AI spending: delete the API key in the Anthropic console.

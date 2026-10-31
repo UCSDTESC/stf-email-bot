@@ -5,7 +5,7 @@
 
 const TAB_HEADERS = {
   'Activity Log': ['Time', 'Inbox', 'From', 'Subject', 'Decision', 'AI category', 'Why', 'Reply (sent or would send)',
-    'Mode', 'Model', 'Input tokens', 'Output tokens', 'AI cost ($)', 'Open in Gmail', 'Message ID'],
+    'Mode', 'Model', 'Input tokens', 'Output tokens', 'AI cost ($)', 'Open in Gmail', 'Message ID', 'Sender name', 'Topic'],
   'Needs Decision': ['Time', 'From', 'Subject', 'Why', 'Open in Gmail', 'Done?'],
   'Errors': ['Time', 'Where', 'Error', 'Message ID'],
   'Eval': ['Run time', 'Model', 'Test email', 'Expected', 'AI chose', 'Result', 'Problems', 'AI reply', 'AI cost ($)'],
@@ -29,6 +29,8 @@ function ensureTab_(ss, name) {
 function formatControlPanel_(ss) {
   Object.keys(TAB_HEADERS).forEach(function (name) {
     const sheet = ensureTab_(ss, name);
+    // Older Control Panels may be missing newer columns: rewrite the header row.
+    sheet.getRange(1, 1, 1, TAB_HEADERS[name].length).setValues([TAB_HEADERS[name]]).setFontWeight('bold');
     sheet.getRange(1, 1, sheet.getMaxRows(), TAB_HEADERS[name].length).setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
     if (sheet.getLastRow() > 1) sheet.setRowHeightsForced(2, sheet.getLastRow() - 1, ROW_HEIGHT);
   });
@@ -38,9 +40,13 @@ function formatControlPanel_(ss) {
 
 const ROW_HEIGHT = 21; // pixels: one line of text
 
+// Opening a spreadsheet is slow (about half a second), so each run opens it once.
+let panelCache_ = null;
 function getControlPanel_() {
   const id = PropertiesService.getScriptProperties().getProperty('CONTROL_PANEL_ID');
-  return id ? SpreadsheetApp.openById(id) : null;
+  if (!id) return null;
+  if (!panelCache_ || panelCache_.id !== id) panelCache_ = { id: id, ss: SpreadsheetApp.openById(id) };
+  return panelCache_.ss;
 }
 
 /** Reads the Settings tab into {KEY: value}. Returns {} if there's no Control Panel yet. */
@@ -80,6 +86,7 @@ function logActivity(entry) {
     (ai.result || {}).category || '', entry.why || (ai.result || {}).reason || '',
     entry.reply || '', entry.mode, ai.model || '', usage.input || 0, usage.output || 0,
     Number((ai.costUsd || 0).toFixed(6)), gmailLink_(entry.threadId), entry.messageId,
+    entry.fromName || '', (ai.result || {}).topic || '',
   ]);
 }
 

@@ -35,6 +35,16 @@ function parseFirstName(fromValue) {
   return /^[A-Za-z][A-Za-z'\-]{0,30}$/.test(first || '') ? first : '';
 }
 
+/** "Doe, Jane <jdoe@ucsd.edu>" -> "Jane Doe"; '' if there's no name. Used for the dashboard. */
+function parseDisplayName(fromValue) {
+  const m = String(fromValue || '').match(/^\s*"?([^"<]+?)"?\s*</);
+  if (!m) return '';
+  let name = m[1].trim();
+  if (name.indexOf('@') !== -1) return '';
+  if (/^[^,]+,\s*[^,]+$/.test(name)) name = name.split(',')[1].trim() + ' ' + name.split(',')[0].trim();
+  return name.replace(/\s+/g, ' ').slice(0, 60);
+}
+
 /** All addresses in the To and Cc headers, lowercased. */
 function recipientAddresses(map) {
   return (map['to'] || []).concat(map['cc'] || []).join(',')

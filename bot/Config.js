@@ -25,13 +25,14 @@ const SETTING_DEFAULTS = {
   APPLICATIONS_EMAIL_COLUMN: ['UCSD email', 'Column header holding the applicant email in that Sheet.'],
   APPLICATIONS_STATUS_COLUMN: ['Status', 'Column header reviewers keep updated (e.g. Under review / Approved / Denied).'],
   LOOKBACK_DAYS: ['2', 'How many days back the bot looks for new emails.'],
+  DASHBOARD_VIEWERS: ['', 'Optional: only these Google accounts may open the dashboard (comma-separated). Empty = anyone the web app deployment allows.'],
 };
 
 const NUMBER_SETTINGS = [
   'DAILY_AI_CALL_LIMIT', 'PER_SENDER_DAILY_LIMIT', 'MAX_BOT_REPLIES_PER_THREAD',
   'MAX_EMAIL_CHARS', 'MAX_REPLY_CHARS', 'LOOKBACK_DAYS',
 ];
-const LIST_SETTINGS = ['OWN_ADDRESSES', 'BLOCKED_SENDERS', 'ALLOWED_LINK_DOMAINS', 'ALERT_EMAILS'];
+const LIST_SETTINGS = ['OWN_ADDRESSES', 'BLOCKED_SENDERS', 'ALLOWED_LINK_DOMAINS', 'ALERT_EMAILS', 'DASHBOARD_VIEWERS'];
 
 /** Turns raw text values into the right types (numbers, true/false, lists). */
 function normalizeSettings(raw) {

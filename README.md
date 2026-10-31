@@ -14,12 +14,12 @@ A Google Apps Script runs inside a Gmail account every 5 minutes. For each new e
 - **forward it to a human** (money decisions, exceptions, anything not in the FAQ), or
 - **ignore it** (not about STF).
 
-The code checks every AI reply before it's sent; only approved links are allowed. Everything is logged to a Google Sheet called the **Control Panel**.
+The code checks every AI reply before it's sent; only approved links are allowed. Everything is logged to a Google Sheet called the **Control Panel**, and a private **dashboard** web page shows the same data in an inbox view with analytics.
 
 ## Folder guide
 | Folder | What's in it |
 |---|---|
-| `bot/` | The Apps Script code (this is what runs in Google). |
+| `bot/` | The Apps Script code (this is what runs in Google). `Dashboard.html` + `Dashboard.js` are the dashboard page. |
 | `faq/STF_FAQ.md` | The bot's starting FAQ. `setup()` copies it into a Google Doc that volunteers edit afterwards. |
 | `tests/` | Automated tests with fake Gmail and a fake AI. No real emails or costs. |
 | `eval/cases.json` | ~30 sample emails used to grade the **real** AI's answers. Run them from Google with `runEval()`, or from a laptop with `npm run eval` (~$0.02 per run). |
@@ -44,6 +44,7 @@ This keeps TESC's real inbox untouched until the team has seen it work.
   1. On your laptop, run `npm run bundle -- --copy`. This packs the whole bot into one file (`dist/Code.gs`) and copies it.
   2. In the editor, select everything in `Code.gs` and paste.
   3. Open **Project Settings** (gear icon), tick **Show "appsscript.json" manifest file in editor**, and replace that file's contents with `dist/appsscript.json`.
+  4. For the dashboard: click **+** next to Files > **HTML**, name it `Dashboard` (exactly), run `npm run bundle -- --copy-html` on your laptop, then select everything in the new file and paste.
 - **Developer way:**
   1. Run `npm i -g @google/clasp` and `clasp login`.
   2. Copy `.clasp.json.example` to `.clasp.json` and paste in the Script ID (from Project Settings).
@@ -66,17 +67,21 @@ This keeps TESC's real inbox untouched until the team has seen it work.
 - When it looks right, set `MODE` to `live`. The bot then replies for real, and the replies show up in your UCSD inbox.
 - To re-test the same emails, run `resetBotMemory()`. It also makes the bot handle the last day of emails again, so only use it in a test inbox.
 
+**12. Open the dashboard.** In the editor, click **Deploy > New deployment**, pick type **Web app**, set *Execute as* = **Me** and *Who has access* = **Only myself**, then click **Deploy** and open the **Web app URL**. Bookmark it.
+- After you paste new code later, use **Deploy > Manage deployments > edit (pencil) > Version: New version > Deploy**. The URL stays the same. It can take a minute before the new version shows up.
+
 ## Moving to TESC's real inbox
 Follow [docs/GO_LIVE.md](docs/GO_LIVE.md). In short: install the same code signed in as `contact@tescatucsd.org`, use a TESC-owned API key, set `ALERT_EMAILS`, run 2 days in `shadow` mode, then switch `MODE` to `live`. No code changes.
 
 ## Running the bot day-to-day
 | I want to... | Do this |
 |---|---|
-| Pause the bot | Control Panel > Settings > `BOT_ENABLED` = `FALSE` |
+| See everything in one place | Open the **dashboard** (your Web app URL): inbox, email text, the bot's reply, analytics, Pause and Live switches |
+| Pause the bot | Dashboard > **Pause**, or Control Panel > Settings > `BOT_ENABLED` = `FALSE` |
 | Change what it says | Edit the FAQ Google Doc. No code needed. |
 | See what it did | Control Panel > **Activity Log** (every email, the decision, the exact reply, the cost) |
-| Handle what it couldn't | Control Panel > **Needs Decision** (reply in Gmail, then tick Done) |
-| Check cost and how much it handles | Control Panel > **Stats** |
+| Handle what it couldn't | Dashboard > **Needs a person** > **Reply in Gmail**, then **Mark done** (or Control Panel > **Needs Decision**, tick Done) |
+| Check cost and how much it handles | Dashboard > **Analytics** (7, 30, 90 days or any dates) |
 | Know if it breaks | You'll get an email after 3 failures in a row, or if it hasn't run in 2+ hours. Details are in the **Errors** tab. |
 | Get a weekly report | Automatic: every Monday at 9am, `ALERT_EMAILS` gets counts, cost and open "needs decision" emails. |
 | Check answer quality after editing the FAQ | Run `runEval()` in the Apps Script editor, then look at the **Eval** tab. |
@@ -89,9 +94,13 @@ npm test                 # offline tests (fake Gmail + fake AI), free
 ANTHROPIC_API_KEY=... npm run eval    # grade real AI answers on eval/cases.json (~$0.02)
 npm run build            # after editing faq/STF_FAQ.md or eval/cases.json
 npm run bundle -- --copy # pack bot/ into dist/Code.gs and copy it, for pasting into Apps Script
+npm run bundle -- --copy-html # copy dist/Dashboard.html, for pasting into the Dashboard file
 ```
+
+Dashboard privacy: email text is read live from Gmail when you open an email and is never saved. The page can only open emails that are in the Activity Log. Avatars are colored initials (no outside image services).
 
 ## Status
 - Tested in a real Apps Script project on a test Gmail, with real Claude Haiku 5.5 answers (shadow and live mode).
 - The Gemini and OpenAI connections are written from their docs but **untested**. Anthropic is the tested default.
-- Not built yet: auto-drafted FAQ suggestions and a prettier dashboard web page.
+- Dashboard tested on the test Gmail with real logged emails.
+- Not built yet: auto-drafted FAQ suggestions.

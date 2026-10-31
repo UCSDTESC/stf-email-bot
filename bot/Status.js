@@ -15,28 +15,43 @@ function findColumn_(headerRow, wanted, fallbackWord) {
 }
 
 /**
- * Pure function: given all Sheet values (first row = headers), returns a short
- * text summary of `email`'s applications, newest first. Unit-tested.
+ * Pure function: the sender's applications, newest first, as
+ * [{ submitted (ms or 0), event, status }]. Returns null if the email column is missing.
  */
-function summarizeApplications(values, email, emailColumnName, statusColumnName) {
-  if (!values || values.length < 2) return 'No application was found for this email address.';
+function findApplications(values, email, emailColumnName, statusColumnName) {
+  if (!values || values.length < 2) return [];
   const header = values[0];
   const emailCol = findColumn_(header, emailColumnName, 'email');
   const statusCol = findColumn_(header, statusColumnName, 'status');
   const timeCol = findColumn_(header, 'Timestamp', 'timestamp');
   const eventCol = findColumn_(header, 'Name of conference or competition', 'conference');
-  if (emailCol === -1) return 'Status lookup is not available right now (email column not found). Treat as needs_decision.';
+  if (emailCol === -1) return null;
 
   const target = String(email).trim().toLowerCase();
-  const rows = values.slice(1).filter(function (r) { return String(r[emailCol]).trim().toLowerCase() === target; });
-  if (!rows.length) return 'No application was found for this email address.';
+  return values.slice(1)
+    .filter(function (r) { return String(r[emailCol]).trim().toLowerCase() === target; })
+    .map(function (r) {
+      const t = timeCol !== -1 && r[timeCol] ? new Date(r[timeCol]).getTime() : 0;
+      return {
+        submitted: isFinite(t) ? t : 0,
+        event: eventCol !== -1 && r[eventCol] ? String(r[eventCol]).slice(0, 120) : 'not listed',
+        status: statusCol !== -1 && String(r[statusCol]).trim() ? String(r[statusCol]).trim().slice(0, 60) : 'Under review (no decision recorded yet)',
+      };
+    })
+    .sort(function (a, b) { return b.submitted - a.submitted; });
+}
 
-  rows.sort(function (a, b) { return new Date(b[timeCol]) - new Date(a[timeCol]); });
-  const lines = rows.slice(0, 3).map(function (r, n) {
-    const submitted = timeCol !== -1 && r[timeCol] ? new Date(r[timeCol]).toDateString() : 'unknown date';
-    const event = eventCol !== -1 && r[eventCol] ? String(r[eventCol]).slice(0, 120) : 'not listed';
-    const status = statusCol !== -1 && String(r[statusCol]).trim() ? String(r[statusCol]).trim().slice(0, 60) : 'Under review (no decision recorded yet)';
-    return (n + 1) + '. Submitted ' + submitted + '. Event: ' + event + '. Status: ' + status + '.';
+/**
+ * Pure function: given all Sheet values (first row = headers), returns a short
+ * text summary of `email`'s applications, newest first. Unit-tested.
+ */
+function summarizeApplications(values, email, emailColumnName, statusColumnName) {
+  const apps = findApplications(values, email, emailColumnName, statusColumnName);
+  if (apps === null) return 'Status lookup is not available right now (email column not found). Treat as needs_decision.';
+  if (!apps.length) return 'No application was found for this email address.';
+  const lines = apps.slice(0, 3).map(function (a, n) {
+    const submitted = a.submitted ? new Date(a.submitted).toDateString() : 'unknown date';
+    return (n + 1) + '. Submitted ' + submitted + '. Event: ' + a.event + '. Status: ' + a.status + '.';
   });
   return 'Applications found for the sender (newest first):\n' + lines.join('\n');
 }

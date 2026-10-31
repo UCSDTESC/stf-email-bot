@@ -151,6 +151,7 @@ function handleMessage_(ctx, thread, messages, last) {
   const from = parseEmailAddress(fromHeader);
   const subject = firstHeader(h, 'subject') || last.getSubject();
   const entry = baseEntry_(ctx, thread, last, from, subject);
+  entry.fromName = parseDisplayName(fromHeader);
   const finish = function (decision, why, label, extra) {
     if (label) addLabel_(thread, label);
     logActivity(Object.assign(entry, { decision: decision, why: why }, extra || {}));

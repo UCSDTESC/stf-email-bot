@@ -14,9 +14,10 @@
 const REPLY_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['category', 'reply', 'reason'],
+  required: ['category', 'topic', 'reply', 'reason'],
   properties: {
     category: { type: 'string', enum: ['faq', 'status', 'needs_decision', 'not_stf'] },
+    topic: { type: 'string', enum: ['deadlines', 'receipts', 'eligibility', 'amounts', 'status', 'other'] },
     reply: { type: 'string' },
     reason: { type: 'string' },
   },
@@ -55,6 +56,8 @@ function buildSystemPrompt(faqText) {
     '5. If the email asks several things and any part needs a decision, use "needs_decision".',
     '',
     'Reply style (for "faq" and "status"): friendly, clear, under 180 words, plain text (no markdown, no bullet symbols other than "-"). Start with "Hi <first name>," (use "Hi there," if no name is given). Include the relevant link(s) from the FAQ. Do not sign off; a signature is added automatically.',
+    '',
+    'In "topic", pick what the email is mainly about: "deadlines" (when to apply, timing, extensions), "receipts" (post-travel form, receipts, reimbursement steps), "eligibility" (who or what trips qualify), "amounts" (how much money), "status" (their own application), or "other".',
     '',
     'In "reason", write one short sentence explaining your choice (this is only seen by TESC volunteers).',
     '',
@@ -156,8 +159,10 @@ function parseModelJson(text) {
   }
   const categories = REPLY_SCHEMA.properties.category.enum;
   if (!data || categories.indexOf(data.category) === -1) throw new Error('AI returned an unknown category');
+  const topics = REPLY_SCHEMA.properties.topic.enum;
   return {
     category: data.category,
+    topic: topics.indexOf(data.topic) !== -1 ? data.topic : 'other',
     reply: typeof data.reply === 'string' ? data.reply.trim() : '',
     reason: typeof data.reason === 'string' ? data.reason.trim() : '',
   };

@@ -106,6 +106,7 @@ export function makeEnv(opts = {}) {
     },
     Session: {
       getEffectiveUser: () => ({ getEmail: () => me }),
+      getActiveUser: () => ({ getEmail: () => opts.viewer || '' }),
       getScriptTimeZone: () => 'America/Los_Angeles',
     },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) },
@@ -118,6 +119,13 @@ export function makeEnv(opts = {}) {
     },
     GmailApp: {
       search: () => [...threads.values()].map(fakeThread),
+      getMessageById: (id) => {
+        for (const t of threads.values()) {
+          const m = t.messages.find((x) => x.id === id);
+          if (m) return { getPlainBody: () => m.body, getDate: () => m.date, getFrom: () => m.from, getSubject: () => m.subject };
+        }
+        throw new Error('Invalid argument: id');
+      },
       getUserLabelByName: (name) => (createdLabels.has(name) ? { getName: () => name } : null),
       createLabel: (name) => { createdLabels.add(name); return { getName: () => name }; },
     },
