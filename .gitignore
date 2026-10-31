@@ -1,0 +1,11 @@
+node_modules/
+.clasp.json
+.clasprc.json
+.env
+*.log
+.DS_Store
+eval/results/
+.playwright-mcp/
+# Private notes for the AI assistant (never commit)
+CLAUDE.md
+docs/TESC_CONTEXT.md
