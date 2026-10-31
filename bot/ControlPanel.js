@@ -30,10 +30,13 @@ function formatControlPanel_(ss) {
   Object.keys(TAB_HEADERS).forEach(function (name) {
     const sheet = ensureTab_(ss, name);
     sheet.getRange(1, 1, sheet.getMaxRows(), TAB_HEADERS[name].length).setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
+    if (sheet.getLastRow() > 1) sheet.setRowHeightsForced(2, sheet.getLastRow() - 1, ROW_HEIGHT);
   });
   const log = ss.getSheetByName('Activity Log');
   [[1, 140], [3, 180], [4, 220], [5, 200], [7, 260], [8, 320]].forEach(function (w) { log.setColumnWidth(w[0], w[1]); });
 }
+
+const ROW_HEIGHT = 21; // pixels: one line of text
 
 function getControlPanel_() {
   const id = PropertiesService.getScriptProperties().getProperty('CONTROL_PANEL_ID');
@@ -60,6 +63,8 @@ function appendToTab_(tabName, row) {
     return;
   }
   sheet.appendRow(row);
+  // Line breaks (e.g. in replies) would make the row tall even with clipping, so force one line.
+  sheet.setRowHeightsForced(sheet.getLastRow(), 1, ROW_HEIGHT);
 }
 
 function gmailLink_(threadId) {

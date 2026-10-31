@@ -88,6 +88,8 @@ export function makeEnv(opts = {}) {
 
   const fakeSheet = (rows) => ({
     appendRow: (row) => rows.push(row),
+    getLastRow: () => rows.length,
+    setRowHeightsForced: () => {},
     getDataRange: () => ({ getValues: () => rows.map((r) => r.slice()) }),
     getRange: (r, c) => ({ setValue: (v) => { rows[r - 1][c - 1] = v; } }),
   });
