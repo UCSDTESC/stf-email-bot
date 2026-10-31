@@ -356,3 +356,123 @@ function runEvalFromDashboard() {
   runEval();
   return latestEval(rowsOf_('Eval'));
 }
+
+// ---------- settings page ----------
+
+/** Settings the dashboard can change, with the allowed range for numbers. Anything else stays sheet-only. */
+const EDITABLE_SETTINGS = {
+  PER_SENDER_DAILY_LIMIT: { type: 'number', min: 0, max: 50 },
+  MAX_BOT_REPLIES_PER_THREAD: { type: 'number', min: 0, max: 20 },
+  DAILY_AI_CALL_LIMIT: { type: 'number', min: 0, max: 1000 },
+  ALERT_EMAILS: { type: 'emails' },
+  BLOCKED_SENDERS: { type: 'emails' },
+  DASHBOARD_VIEWERS: { type: 'emails' },
+  APPLICATIONS_SHEET_ID: { type: 'sheet' },
+  APPLICATIONS_EMAIL_COLUMN: { type: 'column' },
+  APPLICATIONS_STATUS_COLUMN: { type: 'column' },
+  OWN_ADDRESSES: { type: 'emails', required: true },
+  ALLOWED_SENDER_DOMAIN: { type: 'domain' },
+  ALLOWED_LINK_DOMAINS: { type: 'domains', required: true },
+  LOOKBACK_DAYS: { type: 'number', min: 1, max: 14 },
+  MAX_EMAIL_CHARS: { type: 'number', min: 500, max: 20000 },
+  MAX_REPLY_CHARS: { type: 'number', min: 500, max: 10000 },
+};
+
+const EMAIL_RE_ = /^[^\s@,;<>"'=]+@[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+const DOMAIN_RE_ = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+
+/** Pulls a Google Sheet ID out of a link or a bare ID. Returns '' for empty, null if it isn't one. */
+function sheetIdFrom(value) {
+  const s = String(value || '').trim();
+  if (!s) return '';
+  const m = s.match(/\/spreadsheets\/d\/([A-Za-z0-9_-]{20,})/) || s.match(/^([A-Za-z0-9_-]{20,})$/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Checks changes from the settings page. Pure function, unit-tested.
+ * Returns { clean: {KEY: text to store}, errors: {KEY: message} }.
+ */
+function validateSettingChanges(changes, viewerEmail) {
+  const clean = {};
+  const errors = {};
+  Object.keys(changes || {}).forEach(function (key) {
+    const rule = EDITABLE_SETTINGS[key];
+    if (!rule) { errors[key] = 'This setting can only be changed in the spreadsheet.'; return; }
+    const raw = String(changes[key] == null ? '' : changes[key]).trim();
+    if (raw.length > 2000) { errors[key] = 'Too long.'; return; }
+
+    if (rule.type === 'number') {
+      const n = Number(raw);
+      if (raw === '' || !Number.isInteger(n) || n < rule.min || n > rule.max) {
+        errors[key] = 'Enter a whole number from ' + rule.min + ' to ' + rule.max + '.';
+      } else clean[key] = String(n);
+      return;
+    }
+    if (rule.type === 'emails' || rule.type === 'domains') {
+      const items = raw.split(/[,\s]+/).map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean);
+      const re = rule.type === 'emails' ? EMAIL_RE_ : DOMAIN_RE_;
+      const bad = items.filter(function (x) { return !re.test(x); });
+      if (bad.length) { errors[key] = 'Not valid: ' + bad.slice(0, 3).join(', '); return; }
+      if (rule.required && !items.length) { errors[key] = 'This can\'t be empty.'; return; }
+      if (key === 'DASHBOARD_VIEWERS' && items.length) {
+        const me = String(viewerEmail || '').toLowerCase();
+        if (!me) { errors[key] = 'Can\'t confirm who you are, so this can only be changed in the spreadsheet.'; return; }
+        if (items.indexOf(me) === -1) { errors[key] = 'Add your own address (' + me + ') or you\'ll lock yourself out.'; return; }
+      }
+      clean[key] = items.join(', ');
+      return;
+    }
+    if (rule.type === 'domain') {
+      const d = raw.toLowerCase().replace(/^@/, '');
+      if (!DOMAIN_RE_.test(d)) { errors[key] = 'Enter a domain like ucsd.edu.'; return; }
+      clean[key] = d;
+      return;
+    }
+    if (rule.type === 'sheet') {
+      const id = sheetIdFrom(raw);
+      if (id === null) { errors[key] = 'Paste the link to a Google Sheet.'; return; }
+      clean[key] = id;
+      return;
+    }
+    if (rule.type === 'column') {
+      if (!raw || raw.length > 60 || /^[=+\-@]/.test(raw)) { errors[key] = 'Enter the column\'s header text.'; return; }
+      clean[key] = raw;
+    }
+  });
+  return { clean: clean, errors: errors };
+}
+
+/** Current values for the settings page, as text. */
+function settingsPageValues_() {
+  const raw = readSettingsTab_();
+  const out = {};
+  Object.keys(EDITABLE_SETTINGS).forEach(function (key) {
+    const v = raw[key] !== undefined && String(raw[key]).trim() !== '' ? raw[key] : SETTING_DEFAULTS[key][0];
+    out[key] = String(v).trim();
+  });
+  if (out.APPLICATIONS_SHEET_ID) out.APPLICATIONS_SHEET_ID = 'https://docs.google.com/spreadsheets/d/' + out.APPLICATIONS_SHEET_ID + '/edit';
+  return out;
+}
+
+function getSettingsPage() {
+  assertViewer_();
+  const panel = getControlPanel_();
+  return { values: settingsPageValues_(), panelUrl: panel ? panel.getUrl() : '' };
+}
+
+/** Saves changes from the settings page. Nothing is written if any value is invalid. */
+function saveSettings(changes) {
+  assertViewer_();
+  const v = validateSettingChanges(changes, Session.getActiveUser().getEmail());
+  if (Object.keys(v.errors).length) return { ok: false, errors: v.errors };
+  const sheet = getControlPanel_().getSheetByName('Settings');
+  const rows = sheet.getDataRange().getValues();
+  Object.keys(v.clean).forEach(function (key) {
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] === key) { sheet.getRange(i + 1, 2).setValue(v.clean[key]); return; }
+    }
+    sheet.appendRow([key, v.clean[key], SETTING_DEFAULTS[key][1]]);
+  });
+  return { ok: true, values: settingsPageValues_() };
+}

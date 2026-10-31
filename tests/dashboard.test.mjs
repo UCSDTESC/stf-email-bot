@@ -149,3 +149,61 @@ test('DASHBOARD_VIEWERS limits who can use the dashboard', () => {
   const allowed = makeEnv({ settings: { DASHBOARD_VIEWERS: 'tech@tescatucsd.org' }, viewer: 'Tech@tescatucsd.org' });
   assert.ok(allowed.bot.getInboxData());
 });
+
+test('validateSettingChanges accepts good values and explains bad ones', () => {
+  const { bot } = makeEnv();
+  const ok = JSON.parse(JSON.stringify(bot.validateSettingChanges({
+    PER_SENDER_DAILY_LIMIT: ' 10 ',
+    ALERT_EMAILS: 'A@ucsd.edu,  b@tescatucsd.org',
+    APPLICATIONS_SHEET_ID: 'https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/edit#gid=0',
+    ALLOWED_SENDER_DOMAIN: '@UCSD.edu',
+    BLOCKED_SENDERS: '',
+  }, 'me@ucsd.edu')));
+  assert.deepEqual(ok.errors, {});
+  assert.deepEqual(ok.clean, {
+    PER_SENDER_DAILY_LIMIT: '10',
+    ALERT_EMAILS: 'a@ucsd.edu, b@tescatucsd.org',
+    APPLICATIONS_SHEET_ID: '1AbCdEfGhIjKlMnOpQrStUvWxYz012345',
+    ALLOWED_SENDER_DOMAIN: 'ucsd.edu',
+    BLOCKED_SENDERS: '',
+  });
+
+  const bad = JSON.parse(JSON.stringify(bot.validateSettingChanges({
+    PER_SENDER_DAILY_LIMIT: '500',
+    LOOKBACK_DAYS: '1.5',
+    ALERT_EMAILS: 'not-an-email',
+    OWN_ADDRESSES: '',
+    APPLICATIONS_SHEET_ID: 'https://example.com/x',
+    APPLICATIONS_STATUS_COLUMN: '=IMPORTXML("http://evil")',
+    MODE: 'live',
+    ANTHROPIC_API_KEY: 'x',
+  }, 'me@ucsd.edu')));
+  assert.deepEqual(Object.keys(bad.clean), []);
+  assert.deepEqual(Object.keys(bad.errors).sort(), ['ALERT_EMAILS', 'ANTHROPIC_API_KEY', 'APPLICATIONS_SHEET_ID', 'APPLICATIONS_STATUS_COLUMN',
+    'LOOKBACK_DAYS', 'MODE', 'OWN_ADDRESSES', 'PER_SENDER_DAILY_LIMIT']);
+  assert.match(bad.errors.PER_SENDER_DAILY_LIMIT, /0 to 50/);
+});
+
+test('DASHBOARD_VIEWERS can\'t be set in a way that locks you out', () => {
+  const { bot } = makeEnv();
+  assert.match(bot.validateSettingChanges({ DASHBOARD_VIEWERS: 'other@ucsd.edu' }, 'me@ucsd.edu').errors.DASHBOARD_VIEWERS, /lock yourself out/);
+  assert.equal(bot.validateSettingChanges({ DASHBOARD_VIEWERS: 'other@ucsd.edu, ME@ucsd.edu' }, 'me@ucsd.edu').clean.DASHBOARD_VIEWERS, 'other@ucsd.edu, me@ucsd.edu');
+  assert.ok(bot.validateSettingChanges({ DASHBOARD_VIEWERS: 'me@ucsd.edu' }, '').errors.DASHBOARD_VIEWERS);
+  assert.equal(bot.validateSettingChanges({ DASHBOARD_VIEWERS: '' }, '').clean.DASHBOARD_VIEWERS, '');
+});
+
+test('saveSettings writes the Settings tab, or nothing at all if any value is bad', () => {
+  const env = makeEnv({ viewer: 'me@ucsd.edu' });
+  const page = env.bot.getSettingsPage();
+  assert.equal(page.values.PER_SENDER_DAILY_LIMIT, '3');
+
+  const r = JSON.parse(JSON.stringify(env.bot.saveSettings({ PER_SENDER_DAILY_LIMIT: '10', ALERT_EMAILS: 'tech@ucsd.edu' })));
+  assert.equal(r.ok, true);
+  assert.equal(r.values.PER_SENDER_DAILY_LIMIT, '10');
+  assert.equal(env.bot.getSettings().PER_SENDER_DAILY_LIMIT, 10);
+  assert.deepEqual([...env.bot.getSettings().ALERT_EMAILS], ['tech@ucsd.edu']);
+
+  const bad = env.bot.saveSettings({ PER_SENDER_DAILY_LIMIT: '4', ALERT_EMAILS: 'nope' });
+  assert.equal(bad.ok, false);
+  assert.equal(env.bot.getSettings().PER_SENDER_DAILY_LIMIT, 10, 'the good value in a bad save is not written either');
+});

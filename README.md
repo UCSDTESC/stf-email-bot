@@ -76,8 +76,9 @@ Follow [docs/GO_LIVE.md](docs/GO_LIVE.md). In short: install the same code signe
 ## Running the bot day-to-day
 | I want to... | Do this |
 |---|---|
-| See everything in one place | Open the **dashboard** (your Web app URL): inbox, email text, the bot's reply, analytics, Pause and Live switches |
+| See everything in one place | Open the **dashboard** (your Web app URL): inbox, email text, the bot's reply, analytics, settings, Pause and Live switches |
 | Pause the bot | Dashboard > **Pause**, or Control Panel > Settings > `BOT_ENABLED` = `FALSE` |
+| Change limits, alert emails, who can open the dashboard | Dashboard > **Settings**. The AI provider and model are only in the Control Panel's Settings tab. |
 | Change what it says | Edit the FAQ Google Doc. No code needed. |
 | See what it did | Control Panel > **Activity Log** (every email, the decision, the exact reply, the cost) |
 | Handle what it couldn't | Dashboard > **Needs a person** > **Reply in Gmail**, then **Mark done** (or Control Panel > **Needs Decision**, tick Done) |
@@ -85,7 +86,7 @@ Follow [docs/GO_LIVE.md](docs/GO_LIVE.md). In short: install the same code signe
 | Know if it breaks | You'll get an email after 3 failures in a row, or if it hasn't run in 2+ hours. Details are in the **Errors** tab. |
 | Get a weekly report | Automatic: every Monday at 9am, `ALERT_EMAILS` gets counts, cost and open "needs decision" emails. |
 | Check answer quality after editing the FAQ | Run `runEval()` in the Apps Script editor, then look at the **Eval** tab. |
-| Block someone | Add their address to `BLOCKED_SENDERS` |
+| Block someone | Dashboard > **Settings** > Blocked senders |
 | Switch AI provider | Change `PROVIDER` and `MODEL`, add that provider's key to Script Properties (`GEMINI_API_KEY` / `OPENAI_API_KEY`), then run `testModel()` |
 
 ## For developers
