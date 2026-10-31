@@ -9,3 +9,4 @@ eval/results/
 # Private notes for the AI assistant (never commit)
 CLAUDE.md
 docs/TESC_CONTEXT.md
+dist/

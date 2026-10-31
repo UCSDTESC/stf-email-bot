@@ -21,6 +21,9 @@ const LABELS = {
 
 const MAX_ATTEMPTS = 3;
 const STATE_KEY = 'BOT_STATE';
+const START_KEY = 'BOT_START_TIME';
+const MAX_RUN_MS = 4.5 * 60 * 1000; // Google stops scripts at 6 min; stop early and continue next run
+const BOT_VERSION = '1.0.0';
 
 function processInbox() {
   const lock = LockService.getScriptLock();
@@ -58,9 +61,25 @@ function saveState_(s) {
 
 // ---------- main run ----------
 
+/**
+ * The bot only handles emails that arrive AFTER it was first turned on,
+ * so installing it on a busy inbox never answers old emails.
+ */
+function getBotStartTime_() {
+  const props = PropertiesService.getScriptProperties();
+  let start = Number(props.getProperty(START_KEY));
+  if (!start) {
+    start = Date.now();
+    props.setProperty(START_KEY, String(start));
+  }
+  return start;
+}
+
 function runOnce_() {
+  const startedAt = Date.now();
   const settings = getSettings();
   if (!settings.BOT_ENABLED) return;
+  const botStart = getBotStartTime_();
 
   const me = String(Session.getEffectiveUser().getEmail()).toLowerCase();
   const ctx = {
@@ -78,6 +97,11 @@ function runOnce_() {
     const last = messages[messages.length - 1];
     const id = last.getId();
     if (ctx.state.processed[id]) continue;
+    if (Date.now() - startedAt > MAX_RUN_MS) break; // out of time; the next run continues
+    if (last.getDate().getTime() < botStart) { // arrived before the bot was turned on
+      ctx.state.processed[id] = Date.now();
+      continue;
+    }
 
     let stop = false;
     try {
@@ -106,7 +130,7 @@ function runOnce_() {
 function getHeaders_(messageId) {
   const msg = Gmail.Users.Messages.get('me', messageId, {
     format: 'metadata',
-    metadataHeaders: ['From', 'Subject', 'Message-ID', 'References', 'Auto-Submitted', 'Precedence', 'List-Id',
+    metadataHeaders: ['From', 'To', 'Cc', 'Subject', 'Message-ID', 'References', 'Auto-Submitted', 'Precedence', 'List-Id',
       'List-Unsubscribe', 'List-Post', 'Return-Path', 'Authentication-Results', 'X-Autoreply', 'X-Autorespond', 'X-STF-Bot'],
   });
   return headerMap((msg.payload || {}).headers);
@@ -144,6 +168,9 @@ function handleMessage_(ctx, thread, messages, last) {
   const robot = robotOrListReason(h, from, ctx.own);
   if (robot) return finish('skipped: ' + robot, '', LABELS.skipped);
   if (s.BLOCKED_SENDERS.indexOf(from) !== -1) return finish('skipped: blocked sender', '', LABELS.skipped);
+
+  const otherInbox = otherInboxAnswers(h, s.OWN_ADDRESSES, ctx.me);
+  if (otherInbox) return finish('skipped: also sent to ' + otherInbox + ', which answers it', '', LABELS.skipped);
 
   const verified = verifySender(h, from, s.ALLOWED_SENDER_DOMAIN);
   if (!verified.ok) return finish('left for humans: ' + verified.reason, '', LABELS.leftForHumans);

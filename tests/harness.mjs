@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import vm from 'node:vm';
 
 const BOT_DIR = new URL('../bot/', import.meta.url);
-const EXPORTED_CONSTS = ['SETTING_DEFAULTS', 'LABELS', 'FAQ_SEED', 'REPLY_SCHEMA', 'SIGNATURE', 'TAB_HEADERS', 'STATE_KEY'];
+const EXPORTED_CONSTS = ['SETTING_DEFAULTS', 'LABELS', 'FAQ_SEED', 'REPLY_SCHEMA', 'SIGNATURE', 'TAB_HEADERS', 'STATE_KEY', 'EVAL_CASES', 'BOT_VERSION'];
 
 export const PASS_AUTH = 'mx.google.com; dkim=pass header.i=@ucsd.edu header.s=google; spf=pass (google.com: domain of x@ucsd.edu designates 1.2.3.4 as permitted sender) smtp.mailfrom=x@ucsd.edu; dmarc=pass (p=REJECT sp=NONE dis=NONE) header.from=ucsd.edu';
 export const FAIL_AUTH = 'mx.google.com; dkim=none; spf=softfail smtp.mailfrom=x@ucsd.edu; dmarc=fail (p=REJECT sp=NONE dis=NONE) header.from=ucsd.edu';
@@ -12,7 +12,8 @@ export const FAIL_AUTH = 'mx.google.com; dkim=none; spf=softfail smtp.mailfrom=x
 function botSource() {
   const files = readdirSync(BOT_DIR).filter((f) => f.endsWith('.js')).sort();
   const code = files.map((f) => `// ---- ${f}\n` + readFileSync(new URL(f, BOT_DIR), 'utf8')).join('\n');
-  return code + `\nglobalThis.__consts = { ${EXPORTED_CONSTS.join(', ')} };`;
+  return code + `\nglobalThis.__consts = { ${EXPORTED_CONSTS.join(', ')} };` +
+    '\nglobalThis.__setNow = function (fn) { Date.now = fn; };'; // lets tests fake the clock
 }
 
 /** Builds an Anthropic-style API response containing the given JSON answer. */
@@ -33,7 +34,8 @@ function decodeB64(s) {
 
 export function makeEnv(opts = {}) {
   const me = opts.me || 'contact@tescatucsd.org';
-  const props = { CONTROL_PANEL_ID: 'cp', ANTHROPIC_API_KEY: 'test-key', ...(opts.props || {}) };
+  // BOT_START_TIME = 1 (1970) means "handle every email" unless a test sets it.
+  const props = { CONTROL_PANEL_ID: 'cp', ANTHROPIC_API_KEY: 'test-key', BOT_START_TIME: '1', ...(opts.props || {}) };
   const settingsRows = [['Setting', 'Value', 'What it does'], ...Object.entries(opts.settings || {}).map(([k, v]) => [k, v, ''])];
 
   const sheets = {
@@ -42,6 +44,7 @@ export function makeEnv(opts = {}) {
       'Activity Log': [],
       'Needs Decision': [],
       Errors: [],
+      Eval: [],
     },
     ...(opts.extraSheets || {}),
   };
@@ -140,6 +143,7 @@ export function makeEnv(opts = {}) {
         const names = Object.keys(book);
         return {
           getId: () => id,
+          getUrl: () => 'https://docs.google.com/spreadsheets/d/' + id,
           getSheetByName: (n) => (book[n] ? fakeSheet(book[n]) : null),
           getSheets: () => names.map((n) => fakeSheet(book[n])),
         };
@@ -170,6 +174,7 @@ export function makeEnv(opts = {}) {
     fetches,
     addMessage,
     setAiHandler: (fn) => { aiHandler = fn; },
+    setNow: (fn) => context.__setNow(fn),
     labelsOf: (threadId) => [...threads.get(threadId).labels],
     activity: () => sheets.cp['Activity Log'],
     run: () => context.processInbox(),

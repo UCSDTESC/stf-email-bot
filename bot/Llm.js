@@ -45,7 +45,7 @@ function buildSystemPrompt(faqText) {
     '- "faq": the FAQ below clearly answers the question. Write the answer.',
     '- "status": the sender asks about their own application. Answer using ONLY <sender_application>.',
     '- "needs_decision": anything the FAQ does not clearly answer, anything it says to escalate, and any request for an approval, exception, extension, appeal, payment timing, or a complaint. Leave reply empty.',
-    '- "not_stf": the email is not about the Student Travel Fund (other TESC events, sponsorships, spam, newsletters). Leave reply empty.',
+    '- "not_stf": the email is not about the Student Travel Fund (other TESC events, sponsorships, spam, newsletters), OR it only says thanks / confirms / says goodbye and asks nothing new. Leave reply empty.',
     '',
     'Rules:',
     '1. Use ONLY facts written in <faq> or <sender_application>. Never guess or invent deadlines, amounts, links, names or policies.',

@@ -35,6 +35,27 @@ function parseFirstName(fromValue) {
   return /^[A-Za-z][A-Za-z'\-]{0,30}$/.test(first || '') ? first : '';
 }
 
+/** All addresses in the To and Cc headers, lowercased. */
+function recipientAddresses(map) {
+  return (map['to'] || []).concat(map['cc'] || []).join(',')
+    .split(',').map(parseEmailAddress).filter(Boolean);
+}
+
+/**
+ * When the bot runs on two inboxes (contact@ and board@), an email sent to
+ * both would get two replies. Only the inbox listed FIRST in OWN_ADDRESSES
+ * answers; the others skip it. Returns the inbox that will answer, or ''.
+ */
+function otherInboxAnswers(map, ownAddresses, me) {
+  const myRank = ownAddresses.indexOf(me);
+  if (myRank === -1) return '';
+  const recipients = recipientAddresses(map);
+  for (let i = 0; i < myRank; i++) {
+    if (recipients.indexOf(ownAddresses[i]) !== -1) return ownAddresses[i];
+  }
+  return '';
+}
+
 /**
  * Is this email from a robot, a mailing list, or ourselves?
  * Returns the reason as text, or '' if it looks like a real person.

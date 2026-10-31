@@ -8,7 +8,32 @@ const TAB_HEADERS = {
     'Mode', 'Model', 'Input tokens', 'Output tokens', 'AI cost ($)', 'Open in Gmail', 'Message ID'],
   'Needs Decision': ['Time', 'From', 'Subject', 'Why', 'Open in Gmail', 'Done?'],
   'Errors': ['Time', 'Where', 'Error', 'Message ID'],
+  'Eval': ['Run time', 'Model', 'Test email', 'Expected', 'AI chose', 'Result', 'Problems', 'AI reply', 'AI cost ($)'],
 };
+
+/** Returns the tab, creating it with its headers if it's missing (for Control Panels made by older versions). */
+function ensureTab_(ss, name) {
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    sheet.getRange(1, 1, 1, TAB_HEADERS[name].length).setValues([TAB_HEADERS[name]]).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+/**
+ * Keeps log rows one line tall: long text (like the reply) is cut off in the
+ * cell instead of wrapping. Click a cell to read all of it. Safe to run again.
+ */
+function formatControlPanel_(ss) {
+  Object.keys(TAB_HEADERS).forEach(function (name) {
+    const sheet = ensureTab_(ss, name);
+    sheet.getRange(1, 1, sheet.getMaxRows(), TAB_HEADERS[name].length).setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
+  });
+  const log = ss.getSheetByName('Activity Log');
+  [[1, 140], [3, 180], [4, 220], [5, 200], [7, 260], [8, 320]].forEach(function (w) { log.setColumnWidth(w[0], w[1]); });
+}
 
 function getControlPanel_() {
   const id = PropertiesService.getScriptProperties().getProperty('CONTROL_PANEL_ID');
@@ -82,6 +107,7 @@ function createControlPanel_() {
   });
   ss.getSheetByName('Needs Decision').getRange('F2:F').insertCheckboxes();
   ss.getSheetByName('Activity Log').protect().setWarningOnly(true).setDescription('Written by the bot.');
+  formatControlPanel_(ss);
 
   const log = "'Activity Log'!";
   const stats = ss.insertSheet('Stats', 1);

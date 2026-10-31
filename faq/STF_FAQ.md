@@ -7,7 +7,7 @@ More info: https://tescatucsd.org/funding
 
 == HOW TO APPLY ==
 Apply with the Google Form: https://forms.gle/g6GC2MjhuTgNiB9k7
-You must be signed in to your UCSD email account to open the form. All communication about your application is sent to the UCSD email you enter on the form.
+You must be signed in to your UCSD email account to open the form. If the form says "You need permission" or asks you to request access, you are signed in to a personal Google account: switch to your UCSD Google account (or open the link in a private window and sign in with your UCSD email) and try again. All communication about your application is sent to the UCSD email you enter on the form.
 
 The form asks for:
 - Applicant info: student organization (if applying as part of one), first and last name, UCSD email, engineering department, number of students from your group attending (write 1 if you're the only one), whether you've applied for travel funds before, whether you're applying under a lab or research group with a faculty advisor, and the faculty advisor's and fund manager's names and emails (if applicable).

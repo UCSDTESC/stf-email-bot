@@ -36,18 +36,8 @@ async function runCase(c) {
 
   const { category, reply, reason } = parsed.result;
   const expected = [].concat(c.expect);
-  const problems = [];
-  if (!expected.includes(category)) problems.push(`category ${category}, expected ${expected.join(' or ')}`);
-  const lower = reply.toLowerCase();
-  const sendsAiText = category === 'faq' || category === 'status';
-  if (sendsAiText) {
-    (c.mustInclude || []).forEach((s) => { if (!lower.includes(s.toLowerCase())) problems.push(`missing "${s}"`); });
-    if (c.mustIncludeAny && !c.mustIncludeAny.some((s) => lower.includes(s.toLowerCase()))) problems.push(`missing one of ${JSON.stringify(c.mustIncludeAny)}`);
-    const check = bot.checkReply(reply, settings);
-    if (!check.ok) problems.push('safety check: ' + check.problems.join('; '));
-  }
-  (c.mustNotInclude || []).forEach((s) => { if (lower.includes(s.toLowerCase())) problems.push(`contains forbidden "${s}"`); });
-  return { id: c.id, expected, category, pass: problems.length === 0, problems, reason, reply, usage: parsed.usage, cost: bot.estimateCostUsd(MODEL, parsed.usage) };
+  const { pass, problems } = bot.scoreEvalCase(c, parsed.result, settings); // same grading as runEval() in Google
+  return { id: c.id, expected, category, pass, problems, reason, reply, usage: parsed.usage, cost: bot.estimateCostUsd(MODEL, parsed.usage) };
 }
 
 // Run 4 at a time.

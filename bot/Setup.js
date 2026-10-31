@@ -11,6 +11,7 @@ function setup() {
     ss = createControlPanel_();
     props.setProperty('CONTROL_PANEL_ID', ss.getId());
   }
+  formatControlPanel_(ss); // also upgrades Control Panels made by older versions
   const settings = getSettings();
   if (!settings.FAQ_DOC_ID) {
     const doc = DocumentApp.create('STF Bot FAQ (the bot only knows what is in here)');
@@ -36,12 +37,19 @@ function testModel() {
   console.log(JSON.stringify(ai, null, 2));
 }
 
-/** Step 3: turns the bot on (checks the inbox every 5 minutes, plus a daily health check). */
+/**
+ * Step 3: turns the bot on: checks the inbox every 5 minutes, a daily health
+ * check, and a weekly summary email (Mondays). The bot only handles emails
+ * that arrive after the first time this runs; older emails are never touched.
+ */
 function installTriggers() {
   uninstallTriggers();
+  const start = getBotStartTime_();
   ScriptApp.newTrigger('processInbox').timeBased().everyMinutes(5).create();
   ScriptApp.newTrigger('dailyHealthCheck').timeBased().everyDays(1).atHour(9).create();
-  console.log('Bot is running. It starts in shadow (test) mode; set MODE to "live" in the Control Panel to really send replies.');
+  ScriptApp.newTrigger('weeklySummary').timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(9).create();
+  console.log('Bot is running (version ' + BOT_VERSION + '). It handles emails that arrived after ' + new Date(start) + '.');
+  console.log('Mode is ' + getSettings().MODE + '. In shadow mode it only logs; set MODE to "live" in the Control Panel to really send replies.');
 }
 
 /** Turns the bot off completely (removes its triggers). */
@@ -49,9 +57,15 @@ function uninstallTriggers() {
   ScriptApp.getProjectTriggers().forEach(function (t) { ScriptApp.deleteTrigger(t); });
 }
 
-/** Forgets which emails were already handled (useful while testing). */
-function resetBotMemory() {
-  PropertiesService.getScriptProperties().deleteProperty(STATE_KEY);
+/**
+ * Testing only: forgets which emails were already handled AND moves the start
+ * time back by `days` (default 1), so recent test emails get handled again.
+ * Never run this on the real inbox in live mode: it would re-answer old emails.
+ */
+function resetBotMemory(days) {
+  const props = PropertiesService.getScriptProperties();
+  props.deleteProperty(STATE_KEY);
+  props.setProperty(START_KEY, String(Date.now() - (Number(days) || 1) * 24 * 3600 * 1000));
 }
 
 function setSetting_(key, value) {
