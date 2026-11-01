@@ -224,3 +224,13 @@ test('changing "Check inbox every" reschedules the bot, only if it is running', 
   env.bot.installTriggers();
   assert.deepEqual(every(), [5]);
 });
+
+test('checkInboxNow runs the bot, then returns the new email in the inbox', () => {
+  const env = makeEnv({ settings: LIVE, viewer: 'me@ucsd.edu', aiHandler: () => anthropicAnswer({ category: 'faq', topic: 'receipts', reply: 'Hi,\nSee https://tescatucsd.org/funding', reason: 'x' }) });
+  addHeaders(env);
+  env.addMessage({ from: 'Jane Doe <jdoe@ucsd.edu>', subject: 'Receipts', body: 'What receipts do I need?' });
+  const d = JSON.parse(JSON.stringify(env.bot.checkInboxNow()));
+  assert.equal(env.sent.length, 1, 'the reply was sent');
+  assert.ok(d.handled.some((i) => i.subject === 'Receipts'));
+  assert.throws(() => makeEnv({ settings: { DASHBOARD_VIEWERS: 'tech@ucsd.edu' }, viewer: 'x@gmail.com' }).bot.checkInboxNow(), /Not allowed/);
+});

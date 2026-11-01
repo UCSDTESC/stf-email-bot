@@ -471,8 +471,9 @@
     }).catch((e) => { fail(e); $('done').disabled = false; });
   }
 
-  function loadInbox(first) {
-    return call('getInboxData').then((d) => {
+  // fn = 'getInboxData' (just read) or 'checkInboxNow' (run the bot first, then read).
+  function loadInbox(first, fn) {
+    return call(fn || 'getInboxData').then((d) => {
       data = d;
       renderTop();
       renderList();
@@ -634,7 +635,17 @@
   });
 
   loadInbox(true);
-  setInterval(() => { if (!document.hidden) loadInbox(false); }, 15000);
+  // While this page is open, it asks the bot to check the inbox every 15 seconds
+  // (Google's own timer can't run more often than once a minute).
+  let checking = false;
+  function checkNow() {
+    if (document.hidden || checking) return;
+    checking = true;
+    loadInbox(false, 'checkInboxNow').finally(() => { checking = false; });
+  }
+  setInterval(checkNow, 15000);
+  // Coming back to this tab checks right away instead of waiting for the next tick.
+  document.addEventListener('visibilitychange', checkNow);
 </script>
 </body>
 </html>

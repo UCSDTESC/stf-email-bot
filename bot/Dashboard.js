@@ -224,6 +224,21 @@ function getInboxData() {
   };
 }
 
+/**
+ * Called by the open dashboard every 15 seconds: runs the bot now (the time
+ * trigger can't go below 1 minute), then returns the fresh inbox. If a run is
+ * already going, processInbox's lock makes this skip straight to the read.
+ */
+function checkInboxNow() {
+  assertViewer_();
+  try {
+    processInbox();
+  } catch (e) {
+    console.error('checkInboxNow: ' + e);
+  }
+  return getInboxData();
+}
+
 /** range = { days: 7 | 30 | 90 } or { start: 'yyyy-mm-dd', end: 'yyyy-mm-dd' } (end included). */
 function getAnalytics(range) {
   assertViewer_();
