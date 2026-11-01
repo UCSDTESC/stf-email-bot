@@ -395,23 +395,38 @@
 
   // Each email is fetched from the server once, then kept in this page's memory
   // so clicking it again is instant. Nothing is saved to disk.
+  // id -> { p: promise of the email, done: true once it has arrived }
   const details = new Map();
-  function detail(id) {
-    if (!details.has(id)) details.set(id, call('getEmailDetail', id).catch((e) => { details.delete(id); throw e; }));
-    return details.get(id);
+  function remember(id, p) {
+    const e = { p, done: false };
+    p.then(() => { e.done = true; }, () => details.delete(id));
+    details.set(id, e);
+    return e;
   }
-  // Fetch the emails people are most likely to click next, in one background call.
-  function prefetch(firstId) {
-    const ids = [firstId].concat(data.queue.map((i) => i.messageId),
-      data.handled.filter((i) => i.kind !== 'ignored').slice(0, 5).map((i) => i.messageId));
-    const need = [...new Set(ids)].filter((id) => id && !details.has(id)).slice(0, 10);
-    if (!need.length) return;
-    const batch = call('getEmailDetails', need);
-    need.forEach((id) => {
-      const p = batch.then((all) => { if (!all[id]) throw new Error('Could not open this email.'); return all[id]; });
-      p.catch(() => details.delete(id));
-      details.set(id, p);
-    });
+  function detail(id) {
+    const e = details.get(id);
+    if (e && e.done) return e.p;
+    const single = call('getEmailDetail', id);
+    if (!e) return remember(id, single).p;
+    // Still downloading in the background: use whichever answer comes back first.
+    return Promise.any([e.p, single]).catch(() => single);
+  }
+  // Fetch the emails people are most likely to click next, 3 at a time, so the
+  // background work never makes a click wait long.
+  function prefetch() {
+    const ids = data.queue.map((i) => i.messageId)
+      .concat(data.handled.filter((i) => i.kind !== 'ignored').slice(0, 6).map((i) => i.messageId));
+    const need = [...new Set(ids)].filter((id) => id && !details.has(id)).slice(0, 9);
+    let chain = Promise.resolve();
+    for (let i = 0; i < need.length; i += 3) {
+      const group = need.slice(i, i + 3);
+      const batch = chain.then(() => call('getEmailDetails', group));
+      group.forEach((id) => remember(id, batch.then((all) => {
+        if (!all[id]) throw new Error('Could not open this email.');
+        return all[id];
+      })));
+      chain = batch.catch(() => {});
+    }
   }
 
   function renderPane(d) {
@@ -461,8 +476,10 @@
       renderTop();
       renderList();
       const firstId = (d.queue[0] || d.handled[0] || {}).messageId;
-      prefetch(first ? firstId : null);
-      if (first) select(firstId);
+      if (first && firstId) {
+        select(firstId);
+        details.get(firstId).p.catch(() => {}).finally(prefetch);
+      } else prefetch();
     }).catch(fail);
   }
 
