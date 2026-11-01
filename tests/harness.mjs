@@ -35,6 +35,7 @@ function decodeB64(s) {
 export function makeEnv(opts = {}) {
   const me = opts.me || 'contact@tescatucsd.org';
   // BOT_START_TIME = 1 (1970) means "handle every email" unless a test sets it.
+  const triggers = [];
   const props = { CONTROL_PANEL_ID: 'cp', ANTHROPIC_API_KEY: 'test-key', BOT_START_TIME: '1', ...(opts.props || {}) };
   const settingsRows = [['Setting', 'Value', 'What it does'], ...Object.entries(opts.settings || {}).map(([k, v]) => [k, v, ''])];
 
@@ -169,6 +170,19 @@ export function makeEnv(opts = {}) {
       },
     },
     MailApp: { sendEmail: (to, subject, body) => alerts.push({ to, subject, body }) },
+    ScriptApp: {
+      WeekDay: { MONDAY: 'MONDAY' },
+      getProjectTriggers: () => triggers.slice(),
+      deleteTrigger: (t) => { triggers.splice(triggers.indexOf(t), 1); },
+      newTrigger: (fn) => {
+        const t = { fn, every: null, getHandlerFunction: () => fn };
+        const b = {
+          timeBased: () => b, everyMinutes: (n) => { t.every = n; return b; }, everyDays: () => b,
+          atHour: () => b, onWeekDay: () => b, create: () => { triggers.push(t); return t; },
+        };
+        return b;
+      },
+    },
   };
   vm.createContext(context);
   vm.runInContext(botSource(), context, { filename: 'bot.js' });
@@ -182,6 +196,7 @@ export function makeEnv(opts = {}) {
     sent,
     alerts,
     fetches,
+    triggers,
     addMessage,
     setAiHandler: (fn) => { aiHandler = fn; },
     setNow: (fn) => context.__setNow(fn),

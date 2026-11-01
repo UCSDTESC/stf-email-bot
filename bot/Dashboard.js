@@ -376,6 +376,7 @@ const EDITABLE_SETTINGS = {
   LOOKBACK_DAYS: { type: 'number', min: 1, max: 14 },
   MAX_EMAIL_CHARS: { type: 'number', min: 500, max: 20000 },
   MAX_REPLY_CHARS: { type: 'number', min: 500, max: 10000 },
+  CHECK_EVERY_MINUTES: { type: 'choice', values: CHECK_MINUTES_ALLOWED },
 };
 
 const EMAIL_RE_ = /^[^\s@,;<>"'=]+@[a-z0-9-]+(\.[a-z0-9-]+)+$/;
@@ -435,6 +436,11 @@ function validateSettingChanges(changes, viewerEmail) {
       clean[key] = id;
       return;
     }
+    if (rule.type === 'choice') {
+      if (rule.values.indexOf(Number(raw)) === -1) errors[key] = 'Choose ' + rule.values.join(', ') + '.';
+      else clean[key] = String(Number(raw));
+      return;
+    }
     if (rule.type === 'column') {
       if (!raw || raw.length > 60 || /^[=+\-@]/.test(raw)) { errors[key] = 'Enter the column\'s header text.'; return; }
       clean[key] = raw;
@@ -474,5 +480,9 @@ function saveSettings(changes) {
     }
     sheet.appendRow([key, v.clean[key], SETTING_DEFAULTS[key][1]]);
   });
+  // A new check interval only takes effect once the timer is recreated.
+  // Skip it if the bot's timers aren't installed (the bot is switched off).
+  const running = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'processInbox'; });
+  if (v.clean.CHECK_EVERY_MINUTES && running) scheduleInboxCheck_(Number(v.clean.CHECK_EVERY_MINUTES));
   return { ok: true, values: settingsPageValues_() };
 }

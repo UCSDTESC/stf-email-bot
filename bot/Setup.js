@@ -38,18 +38,26 @@ function testModel() {
 }
 
 /**
- * Step 3: turns the bot on: checks the inbox every 5 minutes, a daily health
+ * Step 3: turns the bot on: checks the inbox every CHECK_EVERY_MINUTES (default 5), a daily health
  * check, and a weekly summary email (Mondays). The bot only handles emails
  * that arrive after the first time this runs; older emails are never touched.
  */
 function installTriggers() {
   uninstallTriggers();
   const start = getBotStartTime_();
-  ScriptApp.newTrigger('processInbox').timeBased().everyMinutes(5).create();
+  scheduleInboxCheck_(getSettings().CHECK_EVERY_MINUTES);
   ScriptApp.newTrigger('dailyHealthCheck').timeBased().everyDays(1).atHour(9).create();
   ScriptApp.newTrigger('weeklySummary').timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(9).create();
   console.log('Bot is running (version ' + BOT_VERSION + '). It handles emails that arrived after ' + new Date(start) + '.');
   console.log('Mode is ' + getSettings().MODE + '. In shadow mode it only logs; set MODE to "live" in the Control Panel to really send replies.');
+}
+
+/** (Re)creates the timer that runs processInbox every `minutes` minutes. */
+function scheduleInboxCheck_(minutes) {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'processInbox') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('processInbox').timeBased().everyMinutes(minutes).create();
 }
 
 /** Turns the bot off completely (removes its triggers). */

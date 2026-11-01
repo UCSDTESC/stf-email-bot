@@ -207,3 +207,20 @@ test('saveSettings writes the Settings tab, or nothing at all if any value is ba
   assert.equal(bad.ok, false);
   assert.equal(env.bot.getSettings().PER_SENDER_DAILY_LIMIT, 10, 'the good value in a bad save is not written either');
 });
+
+test('changing "Check inbox every" reschedules the bot, only if it is running', () => {
+  const env = makeEnv({ viewer: 'me@ucsd.edu' });
+  env.bot.installTriggers();
+  const every = () => env.triggers.filter((t) => t.fn === 'processInbox').map((t) => t.every);
+  assert.deepEqual(every(), [5]);
+  assert.equal(env.bot.saveSettings({ CHECK_EVERY_MINUTES: '1' }).ok, true);
+  assert.deepEqual(every(), [1], 'one timer, now every minute');
+  assert.equal(env.triggers.length, 3, 'the daily and weekly timers are untouched');
+  assert.equal(env.bot.saveSettings({ CHECK_EVERY_MINUTES: '2' }).ok, false, 'Apps Script only allows 1, 5, 10, 15 or 30');
+
+  env.bot.uninstallTriggers();
+  env.bot.saveSettings({ CHECK_EVERY_MINUTES: '5' });
+  assert.deepEqual(every(), [], 'a stopped bot is not restarted by a settings change');
+  env.bot.installTriggers();
+  assert.deepEqual(every(), [5]);
+});

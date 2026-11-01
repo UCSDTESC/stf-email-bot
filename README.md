@@ -79,6 +79,7 @@ Follow [docs/GO_LIVE.md](docs/GO_LIVE.md). In short: install the same code signe
 | See everything in one place | Open the **dashboard** (your Web app URL): inbox, email text, the bot's reply, analytics, settings, Pause and Live switches |
 | Pause the bot | Dashboard > **Pause**, or Control Panel > Settings > `BOT_ENABLED` = `FALSE` |
 | Change limits, alert emails, who can open the dashboard | Dashboard > **Settings**. The AI provider and model are only in the Control Panel's Settings tab. |
+| Make the bot check more often (demos) | Dashboard > **Settings** > Check inbox every = 1 minute. Set it back to 5 after: free Gmail accounts only get 90 minutes of run time a day. A timer changed from the dashboard runs the deployed dashboard version, so after pasting new code, deploy a new version (or run `installTriggers()`). |
 | Change what it says | Edit the FAQ Google Doc. No code needed. |
 | See what it did | Control Panel > **Activity Log** (every email, the decision, the exact reply, the cost) |
 | Handle what it couldn't | Dashboard > **Needs a person** > **Reply in Gmail**, then **Mark done** (or Control Panel > **Needs Decision**, tick Done) |

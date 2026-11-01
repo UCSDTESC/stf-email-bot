@@ -25,13 +25,15 @@ const SETTING_DEFAULTS = {
   APPLICATIONS_EMAIL_COLUMN: ['UCSD email', 'Column header holding the applicant email in that Sheet.'],
   APPLICATIONS_STATUS_COLUMN: ['Status', 'Column header reviewers keep updated (e.g. Under review / Approved / Denied).'],
   LOOKBACK_DAYS: ['2', 'How many days back the bot looks for new emails.'],
+  CHECK_EVERY_MINUTES: ['5', 'How often the bot checks the inbox: 1, 5, 10, 15 or 30 minutes. 1 is for demos: free Gmail accounts only get 90 minutes of run time a day. Change it from the dashboard, or run installTriggers() after editing it here.'],
   DASHBOARD_VIEWERS: ['', 'Optional: only these Google accounts may open the dashboard (comma-separated). Empty = anyone the web app deployment allows.'],
 };
 
 const NUMBER_SETTINGS = [
   'DAILY_AI_CALL_LIMIT', 'PER_SENDER_DAILY_LIMIT', 'MAX_BOT_REPLIES_PER_THREAD',
-  'MAX_EMAIL_CHARS', 'MAX_REPLY_CHARS', 'LOOKBACK_DAYS',
+  'MAX_EMAIL_CHARS', 'MAX_REPLY_CHARS', 'LOOKBACK_DAYS', 'CHECK_EVERY_MINUTES',
 ];
+const CHECK_MINUTES_ALLOWED = [1, 5, 10, 15, 30];
 const LIST_SETTINGS = ['OWN_ADDRESSES', 'BLOCKED_SENDERS', 'ALLOWED_LINK_DOMAINS', 'ALERT_EMAILS', 'DASHBOARD_VIEWERS'];
 
 /** Turns raw text values into the right types (numbers, true/false, lists). */
@@ -48,6 +50,7 @@ function normalizeSettings(raw) {
   LIST_SETTINGS.forEach(function (k) {
     s[k] = s[k].split(',').map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean);
   });
+  if (CHECK_MINUTES_ALLOWED.indexOf(s.CHECK_EVERY_MINUTES) === -1) s.CHECK_EVERY_MINUTES = 5;
   s.BOT_ENABLED = s.BOT_ENABLED.toUpperCase() === 'TRUE';
   s.MODE = s.MODE.toLowerCase() === 'live' ? 'live' : 'shadow';
   s.PROVIDER = s.PROVIDER.toLowerCase();

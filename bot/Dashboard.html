@@ -165,6 +165,7 @@
   .field .help { color: var(--dim); font-size: 13px; margin-top: 3px; }
   .field input { width: 100%; background: var(--inset); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font: 14px var(--ui); }
   .field input[type=number] { width: 96px; justify-self: end; }
+  .field select { background: var(--inset); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font: 14px var(--ui); }
   .field input:focus { outline: none; border-color: var(--accent); }
   .field input[type=number] { -moz-appearance: textfield; }
   .field input::-webkit-inner-spin-button, .field input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
@@ -537,6 +538,8 @@
   // ---------- settings ----------
   const SETTINGS_FORM = [
     { title: 'Limits', fields: [
+      { key: 'CHECK_EVERY_MINUTES', label: 'Check inbox every', help: '1 minute is for demos. Free Gmail accounts run out of daily run time at that speed.', type: 'select',
+        options: [['1', '1 minute'], ['5', '5 minutes'], ['10', '10 minutes'], ['15', '15 minutes'], ['30', '30 minutes']] },
       { key: 'PER_SENDER_DAILY_LIMIT', label: 'Replies per person per day', help: 'After this, that person\'s emails are left for you.', type: 'number' },
       { key: 'MAX_BOT_REPLIES_PER_THREAD', label: 'Replies per conversation', help: 'After this, a person takes over the thread.', type: 'number' },
       { key: 'DAILY_AI_CALL_LIMIT', label: 'AI calls per day', help: 'Caps spending if the inbox gets spammed.', type: 'number' },
@@ -563,19 +566,22 @@
   let savedSettings = null;
   function field(f) {
     return '<div class="field" id="f-' + f.key + '"><div><label for="s-' + f.key + '">' + esc(f.label) + '</label><div class="help">' + esc(f.help) + '</div></div>' +
-      '<div class="ctl"><input id="s-' + f.key + '" data-key="' + f.key + '" type="' + (f.type === 'number' ? 'number' : 'text') + '" placeholder="' + esc(f.placeholder || '') + '" value="' + esc(savedSettings[f.key]) + '"><div class="err" hidden></div></div></div>';
+      '<div class="ctl">' + (f.type === 'select'
+        ? '<select id="s-' + f.key + '" data-key="' + f.key + '">' + f.options.map((o) => '<option value="' + o[0] + '"' + (o[0] === savedSettings[f.key] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>'
+        : '<input id="s-' + f.key + '" data-key="' + f.key + '" type="' + (f.type === 'number' ? 'number' : 'text') + '" placeholder="' + esc(f.placeholder || '') + '" value="' + esc(savedSettings[f.key]) + '">') +
+      '<div class="err" hidden></div></div></div>';
   }
   function renderSettings() {
     const advOpen = $('settingsForm').querySelector('details') && $('settingsForm').querySelector('details').open;
     $('settingsForm').innerHTML = SETTINGS_FORM.map((g) => g.advanced
       ? '<details' + (advOpen ? ' open' : '') + '><summary>' + g.title + '</summary>' + g.fields.map(field).join('') + '</details>'
       : '<h2>' + g.title + '</h2>' + g.fields.map(field).join('')).join('');
-    $('settingsForm').querySelectorAll('input').forEach((i) => { i.oninput = updateSaveBar; });
+    $('settingsForm').querySelectorAll('[data-key]').forEach((i) => { i.oninput = updateSaveBar; });
     updateSaveBar();
   }
   function changedSettings() {
     const out = {};
-    $('settingsForm').querySelectorAll('input[data-key]').forEach((i) => {
+    $('settingsForm').querySelectorAll('[data-key]').forEach((i) => {
       if (i.value.trim() !== savedSettings[i.dataset.key]) out[i.dataset.key] = i.value;
     });
     return out;
