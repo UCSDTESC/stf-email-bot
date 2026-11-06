@@ -127,11 +127,18 @@ function truncateText(text, maxChars) {
   return s.length <= maxChars ? s : s.slice(0, maxChars) + '\n[...email cut off here...]';
 }
 
-/** True if a (short) reply asks for a person, e.g. "human" or "can I talk to a real person". */
+/**
+ * True if a short message asks for a person: just "human", or phrases like
+ * "can I talk to a real person". Words like "human" inside a normal question
+ * (e.g. a "Human-Robot Interaction" conference) don't count.
+ */
 function wantsHuman(text) {
   const s = String(text || '').trim();
-  if (!s) return false;
-  return s.length <= 300 && /\b(human|real person|a person|someone real)\b/i.test(s);
+  if (!s || s.length > 300) return false;
+  const firstLine = s.split(/\r?\n/)[0].replace(/[^a-z ]/gi, '').trim().toLowerCase();
+  if (/^(a |an )?(real )?(human|person)( please)?$/.test(firstLine)) return true;
+  return /\b(talk|speak|chat|get in touch|connect)\s+(to|with)\s+(a\s+|an\s+|someone\s+)?(real\s+|actual\s+)?(human|person|board member|staff member|someone)\b/i.test(s) ||
+    /\b(real person|real human|not a bot|someone real)\b/i.test(s);
 }
 
 /**

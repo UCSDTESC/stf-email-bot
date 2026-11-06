@@ -76,6 +76,11 @@ test('wantsHuman', () => {
   assert.equal(bot.wantsHuman('Can I talk to a real person please?'), true);
   assert.equal(bot.wantsHuman('How do I apply?'), false);
   assert.equal(bot.wantsHuman('x'.repeat(400) + ' human'), false, 'long emails go to the AI instead');
+  assert.equal(bot.wantsHuman('Human please'), true);
+  assert.equal(bot.wantsHuman('I want to speak with someone'), true);
+  assert.equal(bot.wantsHuman('Can a person apply twice?'), false);
+  assert.equal(bot.wantsHuman('Is the Human-Robot Interaction conference covered?'), false);
+  assert.equal(bot.wantsHuman('Does CHI (Human Factors in Computing) count?'), false);
 });
 
 test('checkReply blocks bad links, outside emails, empty and long replies', () => {

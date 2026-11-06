@@ -73,6 +73,9 @@ function uninstallTriggers() {
 function resetBotMemory(days) {
   const props = PropertiesService.getScriptProperties();
   props.deleteProperty(STATE_KEY);
+  const pieces = Number(props.getProperty(SEEN_KEY + '_COUNT')) || 0;
+  for (let i = 0; i < pieces; i++) props.deleteProperty(SEEN_KEY + '_' + i);
+  props.deleteProperty(SEEN_KEY + '_COUNT');
   props.setProperty(START_KEY, String(Date.now() - (Number(days) || 1) * 24 * 3600 * 1000));
 }
 

@@ -57,6 +57,8 @@ export function makeEnv(opts = {}) {
   const fetches = [];
   const createdLabels = new Set();
   let msgCounter = 0;
+  const cache = {};
+  const gmailCalls = { search: 0, getMessages: 0 };
   let aiHandler = opts.aiHandler || (() => anthropicAnswer({ category: 'faq', reply: 'Hi there,\nApply at https://forms.gle/g6GC2MjhuTgNiB9k7.', reason: 'covered by FAQ' }));
 
   function addMessage({ threadId, from, subject = 'Travel fund question', body = 'How do I apply?', auth = PASS_AUTH, headers = [], date }) {
@@ -75,24 +77,37 @@ export function makeEnv(opts = {}) {
     return { id, threadId };
   }
 
+  const lastDate = (t) => t.messages[t.messages.length - 1].date;
   const fakeThread = (t) => ({
     getId: () => t.id,
-    getMessages: () => t.messages.map((m) => ({
+    getLastMessageDate: () => lastDate(t),
+    getMessageCount: () => t.messages.length,
+    getMessages: () => (gmailCalls.getMessages++, t.messages.map((m) => ({
       getId: () => m.id,
       getFrom: () => m.from,
       getSubject: () => m.subject,
       getPlainBody: () => m.body,
       getDate: () => m.date,
-    })),
+    }))),
     addLabel: (label) => t.labels.add(label.getName()),
   });
 
+  // Like Sheets: a leading ' keeps text as text and isn't part of the stored value.
+  const cell = (v) => (typeof v === 'string' && v.startsWith("'") ? v.slice(1) : v);
   const fakeSheet = (rows) => ({
-    appendRow: (row) => rows.push(row),
+    appendRow: (row) => rows.push(row.map(cell)),
     getLastRow: () => rows.length,
     setRowHeightsForced: () => {},
     getDataRange: () => ({ getValues: () => rows.map((r) => r.slice()) }),
-    getRange: (r, c) => ({ setValue: (v) => { rows[r - 1][c - 1] = v; } }),
+    getRange: (r, c, nr = 1, nc = 1) => ({
+      setValue: (v) => { rows[r - 1][c - 1] = cell(v); },
+      getValues: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => (rows[r - 1 + i] || [])[c - 1 + j] ?? '')),
+      setValues: (vals) => vals.forEach((vr, i) => {
+        while (rows.length < r + i) rows.push([]);
+        vr.forEach((v, j) => { rows[r - 1 + i][c - 1 + j] = cell(v); });
+      }),
+      insertCheckboxes: () => {},
+    }),
   });
 
   const context = {
@@ -102,6 +117,7 @@ export function makeEnv(opts = {}) {
       getScriptProperties: () => ({
         getProperty: (k) => (k in props ? props[k] : null),
         setProperty: (k, v) => { props[k] = String(v); },
+        setProperties: (o) => { for (const [k, v] of Object.entries(o)) props[k] = String(v); },
         deleteProperty: (k) => { delete props[k]; },
       }),
     },
@@ -109,6 +125,13 @@ export function makeEnv(opts = {}) {
       getEffectiveUser: () => ({ getEmail: () => me }),
       getActiveUser: () => ({ getEmail: () => opts.viewer || '' }),
       getScriptTimeZone: () => 'America/Los_Angeles',
+    },
+    CacheService: {
+      getScriptCache: () => ({
+        get: (k) => (k in cache ? cache[k] : null),
+        putAll: (o) => Object.assign(cache, o),
+        put: (k, v) => { cache[k] = String(v); },
+      }),
     },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) },
     Utilities: {
@@ -119,7 +142,9 @@ export function makeEnv(opts = {}) {
       sleep: () => {},
     },
     GmailApp: {
-      search: () => [...threads.values()].map(fakeThread),
+      // Newest first, like Gmail. `max` limits the results.
+      search: (q, start = 0, max = 500) => (gmailCalls.search++, [...threads.values()]
+        .sort((a, b) => lastDate(b) - lastDate(a)).slice(start, start + max).map(fakeThread)),
       getMessageById: (id) => {
         for (const t of threads.values()) {
           const m = t.messages.find((x) => x.id === id);
@@ -202,6 +227,8 @@ export function makeEnv(opts = {}) {
     setNow: (fn) => context.__setNow(fn),
     labelsOf: (threadId) => [...threads.get(threadId).labels],
     activity: () => sheets.cp['Activity Log'],
+    cache,
+    gmailCalls,
     run: () => context.processInbox(),
   };
 }

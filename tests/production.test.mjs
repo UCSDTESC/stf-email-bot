@@ -123,3 +123,108 @@ test('an email sent to both contact@ and board@ gets only one reply (from contac
   assert.equal(board.sent[0].headers.To, 'bob@ucsd.edu');
   assert.match(board.activity()[0][4], /also sent to contact@tescatucsd\.org/);
 });
+
+// ---------- Gmail quota and memory fixes (version 1.1) ----------
+
+test('a run with no new email does not open any email (saves the daily Gmail quota)', () => {
+  const env = makeEnv({ settings: { MODE: 'live' } });
+  for (let i = 0; i < 20; i++) env.addMessage({ from: 'News <news@example.com>', subject: 'Newsletter ' + i });
+  env.run();
+  const opened = env.gmailCalls.getMessages;
+  env.run();
+  env.run();
+  assert.equal(env.gmailCalls.getMessages, opened, 'already-handled threads are skipped without opening them');
+  assert.equal(env.activity().length, 20, 'each email is logged once');
+});
+
+test('the bot memory is split into pieces so it never hits the 9 KB limit', () => {
+  const env = makeEnv({ settings: { MODE: 'live' } });
+  const seen = {};
+  for (let i = 0; i < 1000; i++) seen['thread' + String(i).padStart(10, '0')] = Date.now() + '/1';
+  env.bot.saveState_({ seen, attempts: {}, retryAt: {} }, 2);
+  const big = Object.entries(env.props).filter(([, v]) => v.length > 9000);
+  assert.deepEqual(big, [], 'no single setting is over 9 KB');
+  assert.ok(Number(env.props.BOT_SEEN_COUNT) > 1, 'memory was stored in more than one piece');
+  assert.equal(Object.keys(env.bot.loadState_().seen).length, 1000, 'everything comes back');
+  // Shrinking deletes the leftover pieces.
+  env.bot.saveState_({ seen: { a: Date.now() + '/1' }, attempts: {}, retryAt: {} }, 2);
+  assert.equal(env.props.BOT_SEEN_COUNT, '1');
+  assert.equal(env.props.BOT_SEEN_1, undefined);
+  // Threads older than the search window are forgotten.
+  env.bot.saveState_({ seen: { old: (Date.now() - 10 * 86400000) + '/1' }, attempts: {}, retryAt: {} }, 2);
+  assert.deepEqual(Object.keys(env.bot.loadState_().seen), []);
+});
+
+test('memory from version 1.0 is still respected, so old emails are not handled again', () => {
+  const env = makeEnv({ settings: { MODE: 'live' } });
+  const { id } = env.addMessage({ from: 'Jane Doe <jdoe@ucsd.edu>' });
+  env.props.BOT_STATE = JSON.stringify({ processed: { [id]: Date.now() } });
+  env.run();
+  assert.equal(env.sent.length, 0);
+  assert.equal(env.fetches.length, 0);
+});
+
+test('daily AI limit: logged once, and waiting emails are answered later', () => {
+  const env = makeEnv({ settings: { MODE: 'live', DAILY_AI_CALL_LIMIT: 1 } });
+  let now = Date.now();
+  env.setNow(() => now);
+  env.addMessage({ from: 'Jane Doe <jdoe@ucsd.edu>' });
+  env.addMessage({ from: 'Bob <bob@ucsd.edu>' });
+  env.addMessage({ from: 'Robot <noreply@ucsd.edu>' });
+  env.run();
+  env.run();
+  now += 31 * 60 * 1000;
+  env.run();
+  assert.equal(env.sheets.cp.Errors.length, 1, 'the limit is logged once, not on every run');
+  assert.equal(env.sent.length, 1);
+  assert.ok(env.activity().some((r) => /robot/.test(r[4])), 'emails that need no AI are still handled');
+  // Next day the waiting email gets its answer.
+  now += 24 * 3600 * 1000;
+  env.bot.Utilities.formatDate = (d) => new Date(now).toISOString().slice(0, 10);
+  env.run();
+  assert.equal(env.sent.length, 2);
+});
+
+test('dashboard check runs the bot only when a new email arrived, at most every 30 seconds', () => {
+  const env = makeEnv({ settings: { MODE: 'live' } });
+  let now = Date.now();
+  env.setNow(() => now);
+  env.addMessage({ from: 'Jane Doe <jdoe@ucsd.edu>' });
+  env.bot.checkInboxNow();
+  assert.equal(env.sent.length, 1);
+  now += 40 * 1000;
+  env.bot.checkInboxNow(); // our own reply is the newest email now: a run that does nothing
+  const searches = env.gmailCalls.search;
+  now += 40 * 1000;
+  env.bot.checkInboxNow(); // nothing new
+  assert.equal(env.gmailCalls.search, searches + 1, 'only one cheap check, no bot run');
+  env.addMessage({ from: 'Bob <bob@ucsd.edu>', date: new Date(now) });
+  env.bot.checkInboxNow(); // new email, and the last run was 40 s ago
+  assert.equal(env.sent.length, 2);
+  env.addMessage({ from: 'Cat <cat@ucsd.edu>', date: new Date(now + 1000) });
+  now += 5 * 1000;
+  env.bot.checkInboxNow();
+  assert.equal(env.sent.length, 2, 'too soon after the last run: the timer or the next check handles it');
+  now += 30 * 1000;
+  env.bot.checkInboxNow();
+  assert.equal(env.sent.length, 3);
+});
+
+test('email text that looks like a formula, number or date is stored as plain text', () => {
+  const { bot } = makeEnv();
+  assert.equal(bot.safeCell_('=IMPORTXML("http://evil")'), "'=IMPORTXML(\"http://evil\")");
+  assert.equal(bot.safeCell_('+1 question'), "'+1 question");
+  assert.equal(bot.safeCell_('1/2'), "'1/2");
+  assert.equal(bot.safeCell_('12345e6789012345'), "'12345e6789012345");
+  assert.equal(bot.safeCell_('Travel fund'), 'Travel fund');
+  assert.equal(bot.safeCell_(5), 5);
+});
+
+test('Needs Decision rows go in the first empty row, not below the old checkboxes', () => {
+  const rows = [['Time', 'From', 'Subject', 'Why', 'Open in Gmail', 'Done?'], ...Array.from({ length: 50 }, () => ['', '', '', '', '', false])];
+  const env = makeEnv({ settings: { MODE: 'live' } });
+  env.sheets.cp['Needs Decision'] = rows;
+  env.bot.logNeedsDecision({ from: 'a@ucsd.edu', subject: 'Exception', why: 'x', threadId: 't1' });
+  assert.equal(rows[1][1], 'a@ucsd.edu');
+  assert.equal(rows.length, 51);
+});

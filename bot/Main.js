@@ -20,10 +20,14 @@ const LABELS = {
 };
 
 const MAX_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 5 * 60 * 1000; // wait 5, then 10 minutes before retrying a failed email
+const LIMIT_WAIT_MS = 30 * 60 * 1000; // daily AI limit reached: look at the email again in 30 minutes
 const STATE_KEY = 'BOT_STATE';
+const SEEN_KEY = 'BOT_SEEN'; // stored in pieces: BOT_SEEN_COUNT, BOT_SEEN_0, BOT_SEEN_1, ...
+const PIECE_CHARS = 8000; // Google allows 9 KB per Script Property
 const START_KEY = 'BOT_START_TIME';
 const MAX_RUN_MS = 4.5 * 60 * 1000; // Google stops scripts at 6 min; stop early and continue next run
-const BOT_VERSION = '1.0.0';
+const BOT_VERSION = '1.1.0';
 
 function processInbox() {
   const lock = LockService.getScriptLock();
@@ -41,11 +45,17 @@ function todayKey_() {
   return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
 }
 
+/**
+ * state.seen: threadId -> "lastMessageTime/messageCount" of the newest email already handled.
+ * If a thread still looks the same, the bot skips it without opening it (saves Gmail quota).
+ */
 function loadState_() {
+  const props = PropertiesService.getScriptProperties();
   let s = {};
-  try { s = JSON.parse(PropertiesService.getScriptProperties().getProperty(STATE_KEY) || '{}'); } catch (e) { s = {}; }
-  s.processed = s.processed || {};
+  try { s = JSON.parse(props.getProperty(STATE_KEY) || '{}'); } catch (e) { s = {}; }
+  s.seen = loadPieces_(props, SEEN_KEY);
   s.attempts = s.attempts || {};
+  s.retryAt = s.retryAt || {};
   if (s.day !== todayKey_()) { s.day = todayKey_(); s.aiCalls = 0; s.perSender = {}; }
   s.aiCalls = s.aiCalls || 0;
   s.perSender = s.perSender || {};
@@ -53,10 +63,44 @@ function loadState_() {
   return s;
 }
 
-function saveState_(s) {
-  const cutoff = Date.now() - 10 * 24 * 3600 * 1000;
-  Object.keys(s.processed).forEach(function (id) { if (s.processed[id] < cutoff) delete s.processed[id]; });
-  PropertiesService.getScriptProperties().setProperty(STATE_KEY, JSON.stringify(s));
+function loadPieces_(props, base) {
+  const count = Number(props.getProperty(base + '_COUNT')) || 0;
+  let text = '';
+  for (let i = 0; i < count; i++) text += props.getProperty(base + '_' + i) || '';
+  try { return JSON.parse(text || '{}'); } catch (e) { return {}; }
+}
+
+function savePieces_(props, base, obj) {
+  const text = JSON.stringify(obj);
+  const oldCount = Number(props.getProperty(base + '_COUNT')) || 0;
+  const pieces = {};
+  let count = 0;
+  for (let i = 0; i < text.length; i += PIECE_CHARS) pieces[base + '_' + count++] = text.slice(i, i + PIECE_CHARS);
+  pieces[base + '_COUNT'] = String(count);
+  props.setProperties(pieces);
+  for (let i = count; i < oldCount; i++) props.deleteProperty(base + '_' + i);
+}
+
+/** Forgets threads the inbox search can no longer return, then saves. Never throws. */
+function saveState_(s, lookbackDays) {
+  try {
+    const cutoff = Date.now() - ((Number(lookbackDays) || 2) + 1) * 24 * 3600 * 1000;
+    Object.keys(s.seen).forEach(function (id) { if (Number(String(s.seen[id]).split('/')[0]) < cutoff) delete s.seen[id]; });
+    if (s.processed) { // memory from version 1.0 (by message id); kept only until it ages out
+      Object.keys(s.processed).forEach(function (id) { if (s.processed[id] < cutoff) delete s.processed[id]; });
+      if (!Object.keys(s.processed).length) delete s.processed;
+    }
+    [s.attempts, s.retryAt].forEach(function (map) {
+      Object.keys(map).forEach(function (id) { if (s.seen[id]) delete map[id]; });
+    });
+    const props = PropertiesService.getScriptProperties();
+    savePieces_(props, SEEN_KEY, s.seen);
+    const rest = Object.assign({}, s);
+    delete rest.seen;
+    props.setProperty(STATE_KEY, JSON.stringify(rest));
+  } catch (err) {
+    logError('saveState', err, '');
+  }
 }
 
 // ---------- main run ----------
@@ -89,42 +133,57 @@ function runOnce_() {
     state: loadState_(),
     faq: null, // loaded only when needed
   };
+  const state = ctx.state;
+  const save = function () { saveState_(state, settings.LOOKBACK_DAYS); };
 
-  const threads = GmailApp.search('in:inbox newer_than:' + settings.LOOKBACK_DAYS + 'd', 0, 50);
+  let threads = [];
+  try {
+    threads = GmailApp.search('in:inbox newer_than:' + settings.LOOKBACK_DAYS + 'd', 0, 50);
+  } catch (err) {
+    logError('processInbox (inbox search)', err, '');
+    return;
+  }
   for (let t = 0; t < threads.length; t++) {
     const thread = threads[t];
-    const messages = thread.getMessages();
-    const last = messages[messages.length - 1];
-    const id = last.getId();
-    if (ctx.state.processed[id]) continue;
+    const tid = thread.getId();
+    // Cheap check first: these come with the search result, so no extra Gmail calls.
+    const look = thread.getLastMessageDate().getTime() + '/' + thread.getMessageCount();
+    if (state.seen[tid] === look) continue;
+    if (state.retryAt[tid] && Date.now() < state.retryAt[tid]) continue;
     if (Date.now() - startedAt > MAX_RUN_MS) break; // out of time; the next run continues
-    if (last.getDate().getTime() < botStart) { // arrived before the bot was turned on
-      ctx.state.processed[id] = Date.now();
-      continue;
-    }
 
-    let stop = false;
+    let outcome;
     try {
-      const outcome = handleMessage_(ctx, thread, messages, last);
-      stop = outcome === 'stop';
-      if (!stop) ctx.state.processed[id] = Date.now();
-      ctx.state.consecutiveErrors = 0;
+      const messages = thread.getMessages();
+      const last = messages[messages.length - 1];
+      if (last.getDate().getTime() < botStart || (state.processed && state.processed[last.getId()])) {
+        outcome = 'done'; // arrived before the bot was turned on, or handled by version 1.0
+      } else {
+        outcome = handleMessage_(ctx, thread, messages, last) || 'done';
+      }
+      state.consecutiveErrors = 0;
     } catch (err) {
-      ctx.state.attempts[id] = (ctx.state.attempts[id] || 0) + 1;
-      ctx.state.consecutiveErrors++;
-      logError('processInbox', err, id);
-      if (ctx.state.attempts[id] >= MAX_ATTEMPTS) {
-        ctx.state.processed[id] = Date.now();
-        addLabel_(thread, LABELS.error);
-        logActivity(Object.assign(baseEntry_(ctx, thread, last, '', ''), { decision: 'error', why: String(err.message || err) }));
+      state.attempts[tid] = (state.attempts[tid] || 0) + 1;
+      state.consecutiveErrors++;
+      logError('processInbox', err, tid);
+      if (state.attempts[tid] >= MAX_ATTEMPTS) {
+        outcome = 'done';
+        try {
+          addLabel_(thread, LABELS.error);
+          const last = thread.getMessages().slice(-1)[0];
+          logActivity(Object.assign(baseEntry_(ctx, thread, last, '', ''), { decision: 'error', why: String(err.message || err) }));
+        } catch (e) { /* already logged above */ }
+      } else {
+        state.retryAt[tid] = Date.now() + RETRY_DELAY_MS * state.attempts[tid];
       }
       maybeAlert_(ctx, err);
     }
-    saveState_(ctx.state); // save after every email so a crash never causes a double reply
-    if (stop) break;
+    if (outcome === 'done') state.seen[tid] = look;
+    else if (outcome === 'wait') state.retryAt[tid] = Date.now() + LIMIT_WAIT_MS;
+    save(); // save after every email so a crash never causes a double reply
   }
-  ctx.state.lastRunOk = Date.now();
-  saveState_(ctx.state);
+  state.lastRunOk = Date.now();
+  save();
 }
 
 function getHeaders_(messageId) {
@@ -143,7 +202,7 @@ function baseEntry_(ctx, thread, msg, from, subject) {
   };
 }
 
-/** Handles the newest email in one thread. Returns 'stop' to end this run early (daily limit). */
+/** Handles the newest email in one thread. Returns 'wait' to look at it again later (daily AI limit). */
 function handleMessage_(ctx, thread, messages, last) {
   const s = ctx.settings;
   const h = getHeaders_(last.getId());
@@ -179,8 +238,11 @@ function handleMessage_(ctx, thread, messages, last) {
   if (botReplies >= s.MAX_BOT_REPLIES_PER_THREAD) return finish('left for humans: bot reply limit for this thread', '', LABELS.leftForHumans);
   if ((ctx.state.perSender[from] || 0) >= s.PER_SENDER_DAILY_LIMIT) return finish('left for humans: sender hit daily limit', '', LABELS.leftForHumans);
   if (ctx.state.aiCalls >= s.DAILY_AI_CALL_LIMIT) {
-    logError('limits', 'Daily AI call limit (' + s.DAILY_AI_CALL_LIMIT + ') reached; remaining emails wait until tomorrow.', last.getId());
-    return 'stop';
+    if (ctx.state.limitLoggedDay !== todayKey_()) { // log it once a day, not on every run
+      ctx.state.limitLoggedDay = todayKey_();
+      logError('limits', 'Daily AI call limit (' + s.DAILY_AI_CALL_LIMIT + ') reached; remaining emails wait until tomorrow.', last.getId());
+    }
+    return 'wait';
   }
 
   const firstName = parseFirstName(fromHeader);

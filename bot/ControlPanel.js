@@ -68,9 +68,20 @@ function appendToTab_(tabName, row) {
     console.log(tabName + ': ' + JSON.stringify(row));
     return;
   }
-  sheet.appendRow(row);
+  sheet.appendRow(row.map(safeCell_));
   // Line breaks (e.g. in replies) would make the row tall even with clipping, so force one line.
   sheet.setRowHeightsForced(sheet.getLastRow(), 1, ROW_HEIGHT);
+}
+
+/**
+ * Email text is untrusted. Sheets would turn "=IMAGE(...)" into a live formula and
+ * "1/2" or "12345e6" into a date or number. A leading ' makes Sheets keep it as text
+ * (the ' is hidden and not part of the value).
+ */
+function safeCell_(v) {
+  if (typeof v !== 'string' || !v) return v;
+  if (/^[=+\-@\t\r]/.test(v) || /^[\d\s.,:\/]+$/.test(v) || !isNaN(Number(v))) return "'" + v;
+  return v;
 }
 
 function gmailLink_(threadId) {
@@ -91,7 +102,18 @@ function logActivity(entry) {
 }
 
 function logNeedsDecision(entry) {
-  appendToTab_('Needs Decision', [new Date(), entry.from, entry.subject, entry.why, gmailLink_(entry.threadId), false]);
+  const row = [new Date(), entry.from, entry.subject, entry.why, gmailLink_(entry.threadId), false];
+  const ss = getControlPanel_();
+  const sheet = ss && ss.getSheetByName('Needs Decision');
+  if (!sheet) return appendToTab_('Needs Decision', row);
+  // Use the first empty row. (Older Control Panels have checkboxes down to row 1000,
+  // so appendRow would put new rows at the very bottom.)
+  const times = sheet.getRange(1, 1, Math.max(sheet.getLastRow(), 1), 1).getValues();
+  let r = 1; // row 1 is the header, so this stops at the first empty row below it
+  while (r <= times.length && times[r - 1][0] !== '') r++;
+  sheet.getRange(r, 1, 1, row.length).setValues([row.map(safeCell_)]);
+  sheet.getRange(r, 6).insertCheckboxes();
+  sheet.setRowHeightsForced(r, 1, ROW_HEIGHT);
 }
 
 function logError(where, err, messageId) {
@@ -117,7 +139,6 @@ function createControlPanel_() {
     sheet.getRange(1, 1, 1, TAB_HEADERS[name].length).setValues([TAB_HEADERS[name]]).setFontWeight('bold');
     sheet.setFrozenRows(1);
   });
-  ss.getSheetByName('Needs Decision').getRange('F2:F').insertCheckboxes();
   ss.getSheetByName('Activity Log').protect().setWarningOnly(true).setDescription('Written by the bot.');
   formatControlPanel_(ss);
 

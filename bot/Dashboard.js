@@ -213,7 +213,7 @@ function getInboxData() {
     inbox: Session.getEffectiveUser().getEmail(),
     enabled: settings.BOT_ENABLED,
     mode: settings.MODE,
-    lastRunOk: loadState_().lastRunOk || 0,
+    lastRunOk: lastRunOk_(),
     queue: inbox.queue,
     handled: inbox.handled,
     weekHandled: week.filter(function (i) { return i.kind !== 'person'; }).length,
@@ -225,18 +225,35 @@ function getInboxData() {
 }
 
 /**
- * Called by the open dashboard every 15 seconds: runs the bot now (the time
- * trigger can't go below 1 minute), then returns the fresh inbox. If a run is
- * already going, processInbox's lock makes this skip straight to the read.
+ * Called by the open dashboard every 15 seconds. It runs the bot only if a new
+ * email arrived (1 cheap Gmail call to check) and at most every 30 seconds for
+ * all open tabs together. The 5-minute timer still does the regular runs.
+ * Running the full bot every 15 seconds used up Google's daily Gmail limit.
  */
 function checkInboxNow() {
   assertViewer_();
   try {
-    processInbox();
+    if (inboxChanged_()) processInbox();
   } catch (e) {
     console.error('checkInboxNow: ' + e);
   }
   return getInboxData();
+}
+
+const MIN_DASHBOARD_RUN_GAP_MS = 30 * 1000;
+
+function inboxChanged_() {
+  const cache = CacheService.getScriptCache();
+  if (Date.now() - Number(cache.get('LAST_DASHBOARD_RUN') || 0) < MIN_DASHBOARD_RUN_GAP_MS) return false;
+  const newest = GmailApp.search('in:inbox', 0, 1)[0];
+  const look = newest ? newest.getId() + '/' + newest.getLastMessageDate().getTime() + '/' + newest.getMessageCount() : '';
+  if (look === cache.get('NEWEST_EMAIL')) return false; // nothing new since the last check
+  cache.putAll({ NEWEST_EMAIL: look, LAST_DASHBOARD_RUN: String(Date.now()) }, 6 * 3600);
+  return true;
+}
+
+function lastRunOk_() {
+  try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(STATE_KEY) || '{}').lastRunOk || 0; } catch (e) { return 0; }
 }
 
 /** range = { days: 7 | 30 | 90 } or { start: 'yyyy-mm-dd', end: 'yyyy-mm-dd' } (end included). */

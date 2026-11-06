@@ -141,15 +141,22 @@ test('BOT_ENABLED = FALSE does nothing', () => {
 test('AI outages: retried on later runs, then labeled Error; alert email after 3 failures', () => {
   const env = makeEnv({ settings: LIVE, aiHandler: () => ({ code: 500, json: { error: 'down' } }) });
   const { threadId } = env.addMessage({ from: STUDENT });
+  let now = Date.now();
+  env.setNow(() => now);
   env.run();
+  env.run(); // too soon: waits 5 minutes before trying again
+  assert.equal(env.sheets.cp.Errors.length, 1);
+  now += 6 * 60 * 1000;
   env.run();
   assert.equal(env.alerts.length, 0);
+  now += 11 * 60 * 1000;
   env.run();
   assert.equal(env.sent.length, 0);
   assert.equal(env.sheets.cp.Errors.length, 3);
   assert.ok(env.labelsOf(threadId).includes('STF Bot/Error'));
   assert.equal(env.alerts.length, 1);
   assert.match(env.alerts[0].subject, /failing/);
+  now += 60 * 60 * 1000;
   env.run();
   assert.equal(env.fetches.length, 6, 'each run tries twice (one retry); gives up after 3 runs');
 });
