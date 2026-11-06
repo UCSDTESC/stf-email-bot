@@ -3,6 +3,7 @@
 //   npm run bundle                 -> writes dist/
 //   npm run bundle -- --copy       -> also puts Code.gs on the clipboard (Mac)
 //   npm run bundle -- --copy-html  -> puts Dashboard.html on the clipboard instead
+//   npm run bundle -- --copy-chat  -> puts the chat project's Code.gs (dist/chat/) on the clipboard
 import { readFileSync, writeFileSync, readdirSync, mkdirSync, copyFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
@@ -27,4 +28,23 @@ if (process.argv.includes('--copy')) {
 if (process.argv.includes('--copy-html')) {
   execFileSync('pbcopy', { input: readFileSync(new URL('Dashboard.html', bot)) });
   console.log('Copied Dashboard.html to the clipboard.');
+}
+
+// The website chat is a separate Apps Script project: chat/ plus the few bot files it reuses.
+const CHAT_SHARED = ['FaqSeed.js', 'Filters.js', 'Llm.js'];
+const chatDir = new URL('../chat/', import.meta.url);
+const chatDist = new URL('chat/', dist);
+const chatFiles = readdirSync(chatDir).filter((f) => f.endsWith('.js')).sort();
+const chatVersion = (readFileSync(new URL('Chat.js', chatDir), 'utf8').match(/CHAT_VERSION = '([^']+)'/) || [])[1];
+const chatCode = [`// STF Chat ${chatVersion}: built ${new Date().toISOString()} from chat/ and bot/ (${CHAT_SHARED.join(', ')}).`,
+  '// Do not edit here; edit the files and run `npm run bundle` again.', '']
+  .concat(CHAT_SHARED.map((f) => `// ===== bot/${f} =====\n` + readFileSync(new URL(f, bot), 'utf8')))
+  .concat(chatFiles.map((f) => `// ===== chat/${f} =====\n` + readFileSync(new URL(f, chatDir), 'utf8'))).join('\n');
+mkdirSync(chatDist, { recursive: true });
+writeFileSync(new URL('Code.gs', chatDist), chatCode);
+copyFileSync(new URL('appsscript.json', chatDir), new URL('appsscript.json', chatDist));
+console.log(`Wrote dist/chat/Code.gs (${Math.round(chatCode.length / 1024)} KB) and dist/chat/appsscript.json`);
+if (process.argv.includes('--copy-chat')) {
+  execFileSync('pbcopy', { input: chatCode });
+  console.log('Copied dist/chat/Code.gs to the clipboard.');
 }

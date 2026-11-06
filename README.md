@@ -20,6 +20,7 @@ The code checks every AI reply before it's sent; only approved links are allowed
 | Folder | What's in it |
 |---|---|
 | `bot/` | The Apps Script code (this is what runs in Google). `Dashboard.html` + `Dashboard.js` are the dashboard page. |
+| `chat/` | The website chat's Apps Script code (a separate project; it also reuses `bot/FaqSeed.js`, `Filters.js`, `Llm.js`). |
 | `faq/STF_FAQ.md` | The bot's starting FAQ. `setup()` copies it into a Google Doc that volunteers edit afterwards. |
 | `tests/` | Automated tests with fake Gmail and a fake AI. No real emails or costs. |
 | `eval/cases.json` | ~30 sample emails used to grade the **real** AI's answers. Run them from Google with `runEval()`, or from a laptop with `npm run eval` (~$0.02 per run). |
@@ -69,6 +70,27 @@ This keeps TESC's real inbox untouched until the team has seen it work.
 
 **12. Open the dashboard.** In the editor, click **Deploy > New deployment**, pick type **Web app**, set *Execute as* = **Me** and *Who has access* = **Only myself**, then click **Deploy** and open the **Web app URL**. Bookmark it.
 - After you paste new code later, use **Deploy > Manage deployments > edit (pencil) > Version: New version > Deploy**. The URL stays the same. It can take a minute before the new version shows up.
+
+## Website chat (chat bubble on tescatucsd.org/funding)
+A chat assistant students can type questions into, on the funding page. It answers only from the same FAQ Doc as the email bot. When it can't answer (status, exceptions, money owed, anything not in the FAQ), it tells them to email `contact@tescatucsd.org` and shows an **Email** button.
+
+It is a **separate Apps Script project** (code in `chat/`). The chat page is public, so it gets no Gmail access: it can only read the FAQ Doc, write to a "Chat Log" tab, and call the AI.
+
+**Set it up (about 10 minutes), signed in as the same Google account that owns the FAQ Doc:**
+1. Go to https://script.google.com > **New project**, name it "STF Chat".
+2. On your laptop run `npm run bundle -- --copy-chat`. In the editor, select everything in `Code.gs` and paste.
+3. **Project Settings** (gear) > tick **Show "appsscript.json"** > replace that file with `dist/chat/appsscript.json`.
+4. **Project Settings > Script Properties**, add:
+   - `ANTHROPIC_API_KEY`: an API key (make a second key in the same "STF Bot" workspace so the $5 cap covers both).
+   - `FAQ_DOC_ID`: copy it from the Control Panel's Settings tab.
+   - `CONTROL_PANEL_ID` (optional): the Control Panel's ID (the long part of its URL). Chats are then logged to a **Chat Log** tab.
+5. Pick `testChat` in the function dropdown, click **Run**, and click Allow. The log shows a sample answer.
+6. **Deploy > New deployment > Web app**: *Execute as* = **Me**, *Who has access* = **Anyone**. Copy the **Web app URL** (ends in `/exec`).
+7. In the website (`UCSDTESC/tescatucsd.org`), set `VITE_STF_CHAT_URL` to that URL in the hosting settings (and in `.env` for local testing), then rebuild. Without it, the bubble doesn't show.
+
+**Limits (protect the AI credits):** questions up to 600 characters, 30 per browser per day, 20 per minute for everyone, 300 per day for everyone (change with the `CHAT_DAILY_LIMIT` Script Property). Turn the chat off with `CHAT_ENABLED` = `FALSE`; students then see "please email contact@tescatucsd.org".
+
+**After changing chat code:** paste again, then **Deploy > Manage deployments > edit > New version**. The URL stays the same.
 
 ## Moving to TESC's real inbox
 Follow [docs/GO_LIVE.md](docs/GO_LIVE.md). In short: install the same code signed in as `contact@tescatucsd.org`, use a TESC-owned API key, set `ALERT_EMAILS`, run 2 days in `shadow` mode, then switch `MODE` to `live`. No code changes.
